@@ -20,21 +20,23 @@ export const CLIPBOARD_GROUPS = [
 export type ClipboardGroup = (typeof CLIPBOARD_GROUPS)[number];
 
 export const GROUP_PATHS: Record<ClipboardGroup, string[]> = {
-  filmAndPaper: ['params.filmStock', 'params.printStock', 'params.scanFilm', 'params.digitalIntermediate', 'params.extendedDynamicRange'],
+  filmAndPaper: ['filmStrength', 'params.filmStock', 'params.printStock', 'params.scanFilm', 'params.digitalIntermediate', 'params.extendedDynamicRange'],
   exposure: ['params.autoExposure', 'params.autoExposureMethod', 'params.exposureCompensationEV', 'params.printBrightnessStops'],
-  whiteBalance: ['decode.whiteBalance', 'decode.temperature', 'decode.tint', 'params.yFilterShift', 'params.mFilterShift'],
+  whiteBalance: ['decode.whiteBalance', 'decode.temperature', 'decode.tint', 'decode.rawTone', 'params.yFilterShift', 'params.mFilterShift'],
   filmEffects: [
     'params.filmFormatMM',
     'params.filmFrame',
     'params.filmSide',
     'params.sideLengthMM',
     'params.grainActive',
+    'params.cameraLensBlurUm',
+    'params.grainBlur',
     'params.densityCurveGamma',
     'params.halationActive',
     'params.glareActive',
     'params.effects',
   ],
-  printEffects: ['params.printEffects', 'params.preflashExposure', 'params.scannerWhiteCorrection', 'params.scannerBlackCorrection', 'params.scannerLensBlur'],
+  printEffects: ['params.printEffects', 'params.preflashExposure', 'params.scannerWhiteCorrection', 'params.scannerBlackCorrection', 'params.scannerLensBlur', 'params.enlargerLensBlur', 'params.scannerUnsharpRadius', 'params.scannerUnsharpAmount'],
   scenePlacement: ['params.sceneLatitude', 'placementNeedsFit'],
 };
 
@@ -51,7 +53,7 @@ function getPath(o: Obj, path: string): unknown {
 }
 function setPath(o: Obj, path: string, value: unknown): Obj {
   const [head, ...rest] = path.split('.');
-  if (!rest.length) return { ...o, [head!]: value };
+  if (!rest.length) { const next={...o};if(value===undefined)delete next[head!];else next[head!]=value;return next; }
   return { ...o, [head!]: setPath(((o[head!] as Obj) ?? {}) as Obj, rest.join('.'), value) };
 }
 
@@ -79,7 +81,7 @@ export function applyClip(clip: SettingsClip, target: Sidecar): Sidecar {
 export function clipChanges(clip: SettingsClip, target: Sidecar): boolean {
   const next = applyClip(clip, target);
   return !jsonEqual(
-    { p: next.params, d: next.decode, f: next.placementNeedsFit },
-    { p: target.params, d: target.decode, f: target.placementNeedsFit },
+    { p: next.params, d: next.decode, f: next.placementNeedsFit, strength: next.filmStrength },
+    { p: target.params, d: target.decode, f: target.placementNeedsFit, strength: target.filmStrength },
   );
 }

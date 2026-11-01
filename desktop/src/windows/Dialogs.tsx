@@ -246,7 +246,7 @@ export function AboutDialog() {
     if (!open) return;
     void platform().appPaths().then(setPaths);
     void Promise.all(
-      ['SpektraLab-GPL-3.0.txt', 'Profiles-and-LUTs-CC-BY-SA-4.0.txt', 'README.txt', 'RawTherapee-NOTICE.txt', 'Nikon-HE-NOTICE.txt'].map(async (name) => {
+      ['SpektraLab-GPL-3.0.txt', 'Profiles-and-LUTs-CC-BY-SA-4.0.txt', 'README.txt', 'RawTherapee-NOTICE.txt', 'Nikon-HE-NOTICE.txt', 'Photo-All-NOTICE.txt'].map(async (name) => {
         try {
           const r = await fetch('assets/licenses/' + name);
           return { name, body: r.ok ? await r.text() : '' };
@@ -268,7 +268,9 @@ export function AboutDialog() {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => void platform().openUrl('https://github.com/andreavolpato/spektrafilm')}>Andrea Volpato · spektrafilm</button>
           <button className="btn" onClick={() => void platform().openUrl('https://github.com/JamesQiu2005/SpektraLab')}>JamesQiu2005 · SpektraLab</button>
+          <button className="btn" onClick={() => void platform().openUrl('https://github.com/YZH2006517/Photo-All')}>YZH2006517 · Photo-All</button>
         </div>
+        <p className="caption">{tz('Lighttable workflow reference: Photo-All (GPL-3.0-or-later). Spektra Studio uses its own viewer integration and native render engine.', '观片台流程参考：Photo-All（GPL-3.0-or-later）。Spektra Studio 独立实现界面集成，使用自身原生渲染引擎。')}</p>
         <p className="caption">
           {tz(
             'Spektra Studio is free software under the GNU GPL, version 3 or later. Based on SpektraLab; original authors and profile attribution follow.',

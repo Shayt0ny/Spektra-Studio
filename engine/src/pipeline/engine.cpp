@@ -1796,7 +1796,9 @@ static bool pair_layers(spk_session* session, const Tier& tier, const Image& sou
         view::Request q; q.rgba16=true; q.target_space="ProPhoto RGB";
         auto grade=[&](const Image& input,const Json& adjustments,Image& output) {
             q.adjustments=adjustments; view::Result timing;
-            const bool ok=view::process(gpu,input,q,identity,nullptr,0,timing,error,di_lut,di_lut?65:0,&output);
+            Image blended=input;
+            if(request.film_strength!=1 && !session->pipeline->blend_view_source(source,input,request.film_strength,blended,error))return false;
+            const bool ok=view::process(gpu,blended,q,identity,nullptr,0,timing,error,di_lut,di_lut?65:0,&output);
             post_ms+=timing.post_ms; return ok;
         };
         Image base, images[2];
@@ -1845,6 +1847,7 @@ bool spk::view::render(spk_session* session, const Request& request, Result& res
     std::lock_guard<std::mutex> guard(session->lock);
     if (request.no_film && request.cineon) { error = "view: no_film cannot write a Digital Intermediate"; return false; }
     const bool no_film = request.no_film;
+    if (!std::isfinite(request.film_strength) || request.film_strength<0 || request.film_strength>1) { error="view: invalid film strength"; return false; }
     if (no_film && (!request.pair.is_null() || session->params.film_render.overscan.pair)) {
         error = "view: no_film is unavailable for a half-frame pair"; return false;
     }
@@ -1946,6 +1949,7 @@ bool spk::view::render(spk_session* session, const Request& request, Result& res
     gpu::BufferRef di_lut;
     const bool di_view = !no_film && session->params.io.digital_intermediate && !session->params.io.scan_film &&
                          !session->params.film.info.is_positive();
+    if (di_view && !request.cineon && request.film_strength!=1) { error="view: film strength is unavailable for Digital Intermediate preview"; return false; }
     if ((request.cineon || di_view) && !di_view_table(session->engine, di_lut, error)) return false;
     if (request.cineon) {
         // The intermediate is where grading starts. Geometry is retained;
@@ -1985,6 +1989,13 @@ bool spk::view::render(spk_session* session, const Request& request, Result& res
     bool pair_layered = false; double pair_print_ms = 0, pair_post_ms = 0;
     if (!no_film && !pair_layers(session, *tier, source, request, di_lut, packed_print, pair_layered,
                      pair_print_ms, pair_post_ms, error)) return false;
+    if (!no_film && !pair_layered && request.film_strength!=1) {
+        session->pipeline->set_source_shape(source.w,source.h,session->source.w,session->source.h);
+        if (!session->pipeline->set_overscan_frame(state.overscan_frame_w,state.overscan_frame_h,error))return false;
+        Image blended;
+        if (!session->pipeline->blend_view_source(source,packed_print,request.film_strength,blended,error))return false;
+        packed_print=std::move(blended);
+    }
     const bool map_display = request.target_space == "sRGB" || request.target_space == "Display P3";
     if (request.export_intent || map_display) {
         char* text = nullptr;

@@ -302,6 +302,8 @@ export class GLRenderer {
   private fbo: WebGLFramebuffer | null = null;
   private fboTex: WebGLTexture | null = null;
   private fboSize = { width: 0, height: 0 };
+  private bindingRevision=0;
+  private boundState:{state:DrawState;revision:number;offscreen:boolean;space:DisplaySpace}|null=null;
   readonly maxTexture: number;
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, textureLimit = Infinity) {
@@ -407,11 +409,13 @@ export class GLRenderer {
   }
 
   setImage(img: RgbaImage | null) {
+    this.bindingRevision++;
     this.hasImage = this.upload(this.image, this.image16, img);
     this.imageWide = img?.format === 'rgba16';
     this.imageInfo = img;
   }
   setOriginal(img: RgbaImage | null) {
+    this.bindingRevision++;
     this.hasOriginal = this.upload(this.original, this.original16, img);
     this.originalWide = img?.format === 'rgba16';
     this.originalSpace = previewSpace(img?.colorSpace);
@@ -482,7 +486,18 @@ export class GLRenderer {
 
   private bind(s: DrawState, offscreen: boolean) {
     const gl = this.gl;
+    const previous=this.boundState,p=previous?.state;
+    // Geometry/grade snapshots are immutable. Pan/zoom only changes these
+    // three viewport uniforms; texture uploads and offscreen draws invalidate.
+    const reuse=previous&&p&&previous.revision===this.bindingRevision&&previous.space===this.displaySpace&&previous.offscreen===offscreen
+      &&p.display===s.display&&p.editingCrop===s.editingCrop&&p.adjustments===s.adjustments&&p.sourceSize.width===s.sourceSize.width&&p.sourceSize.height===s.sourceSize.height
+      &&p.compare===s.compare&&p.split===s.split&&p.surround===s.surround;
     gl.useProgram(this.program);
+    gl.uniform2f(this.u('uViewport'),s.viewport.width,s.viewport.height);
+    gl.uniform2f(this.u('uOffset'),s.offset.x,s.offset.y);
+    gl.uniform2f(this.u('uOutSize'),s.outSize.width,s.outSize.height);
+    if(reuse)return;
+    this.boundState={state:s,revision:this.bindingRevision,offscreen,space:this.displaySpace};
     this.setCurves(s.adjustments);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.image);
@@ -557,6 +572,7 @@ export class GLRenderer {
     if (!this.hasImage && !(s.compare === 2 && this.hasOriginal)) return null;
     const gl = this.gl;
     if (!this.fbo || this.fboSize.width !== width || this.fboSize.height !== height) {
+      this.boundState=null;
       if (this.fbo) gl.deleteFramebuffer(this.fbo);
       if (this.fboTex) gl.deleteTexture(this.fboTex);
       this.fboTex = this.texture(gl.NEAREST);

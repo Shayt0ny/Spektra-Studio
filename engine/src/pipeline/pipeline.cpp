@@ -103,6 +103,8 @@ void Pipeline::set_source_long_edge(uint32_t long_edge, uint32_t frame_long_edge
 
 void Pipeline::set_source_shape(uint32_t w, uint32_t h, uint32_t full_w, uint32_t full_h) {
     const auto& g = params_.io.geometry;
+    const double cut_w=std::max(1.,std::round(g.crop_w*w)),cut_h=std::max(1.,std::round(g.crop_h*h));
+    overscan_crop_aspect_=std::max(cut_w,cut_h)/std::min(cut_w,cut_h);
     auto edge = [&](uint32_t width, uint32_t height) {
         if (overscan_wanted() || params_.film_render.date_imprint.active)
             return std::max(std::max(1u, uint32_t(std::lround(g.crop_w * width))),
@@ -474,7 +476,10 @@ bool Pipeline::build(const Params& params, std::string& error) {
     if (di_active_) {
         node_count_ += 1;                                                // digital_intermediate
     } else {
-    if (!params_.io.scan_film) node_count_ += 3;                         // the printing stage
+    if (!params_.io.scan_film) {
+        node_count_ += 3;                                               // the printing stage
+        node_count_ += params_.enlarger.lens_blur > 0.0 ? 1 : 0;
+    }
     node_count_ += contrast_mask_wanted() ? 1 : 0;                       // RFC-024 analysis
     node_count_ += 5;                                                    // scan..gamut_compress
     node_count_ += params_.print_render.edr_enabled && !params_.io.scan_film ? 1 : 0;
@@ -1015,6 +1020,16 @@ double Pipeline::lens_blur_sigma() const {
 
 double Pipeline::scanner_blur_sigma() const {
     return params_.scanner.lens_blur;
+}
+
+double Pipeline::enlarger_blur_sigma() const {
+    return params_.io.scan_film || di_active_ ? 0.0 : params_.enlarger.lens_blur * tier_ratio();
+}
+
+Blur::Demand Pipeline::print_spectral_demand() const {
+    double sigma[3];
+    fill3(sigma, enlarger_blur_sigma());
+    return Blur::demand(sigma);
 }
 
 double Pipeline::unsharp_sigma() const {
@@ -1648,6 +1663,27 @@ bool Pipeline::node_print_curves(const Image& in, Image& out, std::string& error
                         baked_.print_curve_k, out, error);
 }
 
+// Copyright (C) 2026 shayt0ny. Optional enlarger defocus in linear paper
+// exposure, after the spectral integral/preflash and before paper development.
+// Never blur logarithmic exposure or the measured film/paper density curves.
+bool Pipeline::node_enlarger_blur(const Image& in, Image& out, std::string& error) {
+    const double radius = enlarger_blur_sigma();
+    if (!(radius > 0.0)) { out = in; return true; }
+    Timer t(this, "printing.expose.enlarger_blur");
+    auto convert = [&](const Image& source, Image& target, uint32_t mode) {
+        if (!alloc_like(source, target, error)) return false;
+        const uint32_t meta[2] = {uint32_t(source.elements()), mode};
+        return gpu_->dispatch("spk_enlarger_blur_io",
+            {gpu::Arg::buf(source.buf), gpu::Arg::inline_bytes(meta, 2), gpu::Arg::buf(target.buf)},
+            source.elements(), error);
+    };
+    Image linear, softened;
+    if (!convert(in, linear, 0)) return false;
+    double sigma[3]; fill3(sigma, radius);
+    if (!blur_.gaussian_consume(std::move(linear), sigma, softened, error)) return false;
+    return convert(softened, out, 1);
+}
+
 // ---------------------------------------------------------------------------
 // scanning
 // ---------------------------------------------------------------------------
@@ -2059,6 +2095,7 @@ bool Pipeline::print_spectral(Chain in, Chain& out, std::string& error) {
         if (mask_on_) { SPK_NODE(advance_if_ok(node_contrast_mask_epilogue(cur, next, error), cur, next)); }
         else { SPK_NODE(advance_if_ok(node_enlarger_spectral(cur, next, error), cur, next)); }
         SPK_NODE(advance_if_ok(node_print_exposure(cur, next, error), cur, next));
+        SPK_NODE(advance_if_ok(node_enlarger_blur(cur, next, error), cur, next));
         SPK_NODE(advance_if_ok(node_print_curves(cur, next, error), cur, next));
     }
     SPK_NODE(advance_if_ok(node_scan_spectral(cur, next, error), cur, next));
@@ -2133,7 +2170,7 @@ const Pipeline::Stage Pipeline::kFilmStages[] = {
 };
 const size_t Pipeline::kFilmStageCount = sizeof(kFilmStages) / sizeof(kFilmStages[0]);
 const Pipeline::Stage Pipeline::kPrintStages[] = {
-    {"print_spectral",    StageClass::Pointwise,     &Pipeline::print_spectral,    nullptr},
+    {"print_spectral",    StageClass::Neighbourhood, &Pipeline::print_spectral,    &Pipeline::print_spectral_demand},
     {"print_glare",       StageClass::Whole,         &Pipeline::print_glare,       nullptr},
     {"print_linear",      StageClass::Pointwise,     &Pipeline::print_linear,      nullptr},
     {"print_scan_finish", StageClass::Neighbourhood, &Pipeline::print_scan_finish, &Pipeline::print_scan_finish_demand},

@@ -19,4 +19,5 @@ for (const f of readdirSync(resolve(app, 'Licenses'))) {
 }
 cpSync(resolve(here, '../../engine/third_party/RawTherapee-NOTICE.txt'), resolve(out, 'licenses/RawTherapee-NOTICE.txt'));
 cpSync(resolve(here, '../../engine/third_party/nikon_he/NOTICE.txt'), resolve(out, 'licenses/Nikon-HE-NOTICE.txt'));
+cpSync(resolve(here, '../../license/Photo-All-NOTICE.txt'), resolve(out, 'licenses/Photo-All-NOTICE.txt'));
 console.log('assets: copied to public/assets');

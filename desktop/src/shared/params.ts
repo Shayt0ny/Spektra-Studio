@@ -189,6 +189,7 @@ export type FilmEdgeFormat = (typeof FILM_EDGE_FORMATS)[number];
 
 export interface FilmEdgeSettings {
   active: boolean;
+  followCrop: boolean;
   format: string;
   view: string;
   gate: string;
@@ -206,6 +207,7 @@ export interface FilmEdgeSettings {
 }
 export const FILM_EDGE_DEFAULT: FilmEdgeSettings = {
   active: false,
+  followCrop: true,
   format: '135',
   view: 'strip',
   gate: 'auto',
@@ -275,6 +277,11 @@ export interface FilmParams {
   filmSide: FilmSide;
   sideLengthMM: number;
   grainActive: boolean;
+  cameraLensBlurUm: number;
+  grainBlur: number;
+  enlargerLensBlur: number;
+  scannerUnsharpRadius: number;
+  scannerUnsharpAmount: number;
   densityCurveGamma: number;
   scannerWhiteCorrection: boolean;
   scannerBlackCorrection: boolean;
@@ -310,6 +317,11 @@ export const FILM_PARAMS_DEFAULT: FilmParams = {
   filmSide: 'short',
   sideLengthMM: 24,
   grainActive: true,
+  cameraLensBlurUm: 0,
+  grainBlur: 0.65,
+  enlargerLensBlur: 0,
+  scannerUnsharpRadius: 0.7,
+  scannerUnsharpAmount: 0.7,
   densityCurveGamma: 1,
   scannerWhiteCorrection: false,
   scannerBlackCorrection: false,
@@ -376,6 +388,11 @@ function decodeShape<T extends object>(raw: unknown, d: T): T {
 export function decodeFilmParams(raw: unknown): FilmParams {
   const o = obj(raw);
   const base = decodeShape(o, FILM_PARAMS_DEFAULT);
+  // New spatial controls accept only finite values from imported recipes.
+  for (const [key, lo, hi] of [
+    ['cameraLensBlurUm', 0, 200], ['grainBlur', 0, 10], ['enlargerLensBlur', 0, 20],
+    ['scannerUnsharpRadius', 0, 20], ['scannerUnsharpAmount', 0, 4],
+  ] as const) base[key] = Number.isFinite(base[key]) ? clamp(base[key], lo, hi) : FILM_PARAMS_DEFAULT[key];
   base.autoExposureMethod =
     'autoExposureMethod' in o ? (typeof o.autoExposureMethod === 'string' ? o.autoExposureMethod : null) : null;
   if (!('filmStock' in o)) base.autoExposureMethod = FILM_PARAMS_DEFAULT.autoExposureMethod;
@@ -386,6 +403,8 @@ export function decodeFilmParams(raw: unknown): FilmParams {
   base.effects = decodeShape(o.effects, EFFECTS_DEFAULT);
   base.filmEdge = decodeShape(o.filmEdge, FILM_EDGE_DEFAULT);
   base.dateBack = decodeShape(o.dateBack, DATE_BACK_DEFAULT);
+  // null means no compatible date-back camera; it is a valid saved value.
+  if (obj(o.dateBack).camera === null) base.dateBack.camera = null;
   if (o.filmEdge && !('seeded' in obj(o.filmEdge))) base.filmEdge.seeded = 'frameSeed' in obj(o.filmEdge);
   return base;
 }
@@ -484,6 +503,11 @@ export function wire(p: FilmParams, gate: FeatureGate = ALL_FEATURES, catalog?: 
     { name: 'auto_exposure', value: p.autoExposure, layer: 'shoot' },
     { name: 'film_format_mm', value: clamp(filmFormatForWire(p, gate), 4, 200), layer: 'shoot' },
     { name: 'grain_active', value: p.grainActive, layer: 'shoot' },
+    { name: 'lens_blur_um', value: clamp(p.cameraLensBlurUm ?? 0, 0, 200), layer: 'shoot' },
+    { name: 'grain_blur', value: clamp(p.grainBlur ?? 0.65, 0, 10), layer: 'shoot' },
+    { name: 'enlarger_lens_blur', value: p.printEffects ? clamp(p.enlargerLensBlur ?? 0, 0, 20) : 0, layer: 'print' },
+    { name: 'scanner_unsharp_radius', value: clamp(p.scannerUnsharpRadius ?? 0.7, 0, 20), layer: 'print' },
+    { name: 'scanner_unsharp_amount', value: clamp(p.scannerUnsharpAmount ?? 0.7, 0, 4), layer: 'print' },
     { name: 'density_curve_gamma', value: clamp(p.densityCurveGamma ?? 1, .2, 4), layer: 'shoot' },
     { name: 'scanner_white_correction', value: !!p.scannerWhiteCorrection && !p.scanFilm && !p.digitalIntermediate && !catalog?.isPositive(p.filmStock), layer: 'print' },
     { name: 'scanner_black_correction', value: !!p.scannerBlackCorrection && !p.scanFilm && !p.digitalIntermediate && !catalog?.isPositive(p.filmStock), layer: 'print' },
@@ -579,6 +603,7 @@ export function wire(p: FilmParams, gate: FeatureGate = ALL_FEATURES, catalog?: 
     f.push({ name: 'overscan_pair', value: fe.pair, layer: 'shoot' });
     if (edgeEffective(fe, gate)) {
       f.push(
+        { name: 'overscan_follow_crop', value: fe.followCrop && !fe.pair, layer: 'shoot' },
         { name: 'overscan_format', value: fe.format, layer: 'shoot' },
         { name: 'overscan_mode', value: fe.view, layer: 'shoot' },
         { name: 'overscan_gate', value: fe.gate, layer: 'shoot' },

@@ -2,7 +2,7 @@
 // colour space, size, naming, folder and what to do about an existing file.
 // Pure; `recipes.test.ts` pins the naming.
 
-export type ExportFormat = 'jpeg' | 'png' | 'tiff' | 'di';
+export type ExportFormat = 'jpeg' | 'png' | 'tiff' | 'di' | 'webp' | 'raw-master' | 'original';
 export type ExportSpace = 'sRGB' | 'display-p3' | 'prophoto' | 'adobe-rgb' | 'rec2020';
 export const EXPORT_SPACES: { value: ExportSpace; label: string }[] = [
   { value: 'sRGB', label: 'sRGB' }, { value: 'display-p3', label: 'Display P3' },
@@ -38,14 +38,22 @@ export const DEFAULT_RECIPES: ExportRecipe[] = [
   { id: 'tiff-prophoto', name: 'TIFF 16-bit — ProPhoto', format: 'tiff', bitDepth: 16, colorSpace: 'prophoto', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'SpektraLab', existing: 'addSuffix', naming: naming() },
   { id: 'png-srgb', name: 'PNG 8-bit — sRGB', format: 'png', bitDepth: 8, colorSpace: 'sRGB', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'SpektraLab', existing: 'addSuffix', naming: naming() },
   { id: 'di', name: 'Digital Intermediate', format: 'di', bitDepth: 16, colorSpace: 'display-p3', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: '_prints', existing: 'addSuffix', naming: naming() },
+  { id: 'share-srgb', name: 'Social sharing — JPEG sRGB', format: 'jpeg', bitDepth: 8, colorSpace: 'sRGB', quality: 92, longEdge: 2560, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
+  { id: 'jpeg-original', name: 'Original size — JPEG 100%', format: 'jpeg', bitDepth: 8, colorSpace: 'sRGB', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
+  { id: 'png16-srgb', name: 'PNG 16-bit — sRGB', format: 'png', bitDepth: 16, colorSpace: 'sRGB', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
+  { id: 'webp-lossless', name: 'WebP lossless — sRGB', format: 'webp', bitDepth: 8, colorSpace: 'sRGB', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
+  { id: 'raw-master', name: 'RAW development master — TIFF 16-bit', format: 'raw-master', bitDepth: 16, colorSpace: 'prophoto', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
+  { id: 'original-copy', name: 'Original copy + Spektra recipe', format: 'original', bitDepth: 16, colorSpace: 'prophoto', quality: 100, longEdge: 0, folder: { kind: 'besideOriginal' }, subfolder: 'Spektra Studio', existing: 'addSuffix', naming: naming() },
 ];
 
-export const extensionOf = (r: ExportRecipe) => (r.format === 'jpeg' ? 'jpg' : r.format === 'png' ? 'png' : 'tif');
+export const extensionOf = (r: ExportRecipe) => (r.format === 'jpeg' ? 'jpg' : r.format === 'png' ? 'png' : r.format === 'webp' ? 'webp' : 'tif');
 
-/** The host's `format` for a recipe. PNG is 8-bit only on this host. */
-export function hostFormat(r: ExportRecipe): 'tiff16' | 'tiff8' | 'jpeg' | 'png' {
+/** The host's file codec, independent of preview transport depth. */
+export function hostFormat(r: ExportRecipe): 'tiff16' | 'tiff8' | 'jpeg' | 'png' | 'png16' | 'webp-lossless' {
   if (r.format === 'jpeg') return 'jpeg';
-  if (r.format === 'png') return 'png';
+  if (r.format === 'png') return r.bitDepth === 16 ? 'png16' : 'png';
+  if (r.format === 'webp') return 'webp-lossless';
+  if (r.format === 'raw-master') return 'tiff16';
   return r.bitDepth === 8 ? 'tiff8' : 'tiff16';
 }
 
@@ -137,7 +145,8 @@ export function decodeRecipes(raw: unknown): ExportRecipe[] {
       out[i] = structuredClone(builtin);
     }
   }
-  return out.length ? [...out, ...recovered] : DEFAULT_RECIPES;
+  const missing=DEFAULT_RECIPES.filter(d=>!out.some(r=>r.id===d.id));
+  return out.length ? [...out, ...recovered,...structuredClone(missing)] : DEFAULT_RECIPES;
 }
 
 
@@ -153,6 +162,9 @@ export function editRecipe(recipes: ExportRecipe[], current: number, patch: Part
 }
 
 export function recipeSummary(r: ExportRecipe): string {
+  if (r.format === 'original') return 'Original bytes + Spektra recipe';
+  if (r.format === 'raw-master') return 'RAW development only · TIFF 16 bit';
+  if (r.format === 'webp') return `WEBP · lossless · 8 bit · ${r.colorSpace}`;
   if (r.format === 'di') return 'Digital Intermediate';
   const space = EXPORT_SPACES.find((space) => space.value === r.colorSpace)?.label ?? r.colorSpace;
   return `${r.format.toUpperCase()} · ${r.bitDepth} bit · ${space}`;

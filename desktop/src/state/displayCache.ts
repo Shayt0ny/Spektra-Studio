@@ -13,10 +13,13 @@ export interface DisplayCacheDescriptor {
 }
 export interface DisplayCacheStatus {
   cap_bytes: number; bytes: number; entries: number; max_entry_bytes: number; path: string;
+  default_path?: string;
 }
 export interface DisplayCacheOptions {
   /** Background whole-folder previews must not evict recently viewed frames. */
   retain?: boolean;
+  disk?: boolean;
+  family?: string;
 }
 
 const MAX_IMAGE_BYTES = 64 * 1024 * 1024;
@@ -26,7 +29,7 @@ let memoryBytes = 0;
 let memoryGeneration = 0;
 const recent = new Map<string, { image: RgbaImage; bytes: number }>();
 const reading = new Map<string, Promise<RgbaImage | null>>();
-type Writeback = { key: string; image: RgbaImage; done: (stored: boolean) => void };
+type Writeback = { key: string; image: RgbaImage; family?: string; done: (stored: boolean) => void };
 let pendingWrite: Writeback | null = null;
 let writer: Promise<void> | null = null;
 let clearing: Promise<void> | null = null;
@@ -133,7 +136,7 @@ function pumpWrites() {
       let stored = false;
       try {
         const { data, ...metadata } = job.image;
-        stored = await invoke<boolean>('frame_cache_write', encodeFrame({ key: job.key, metadata: { image: metadata } }, data)) === true;
+        stored = await invoke<boolean>('frame_cache_write', encodeFrame({ key: job.key, metadata: { image: metadata, ...(job.family?{family:job.family}:{}) } }, data)) === true;
       } catch { /* A full/unwritable cache must not make a successful render fail. */ }
       finally { job.done(stored); }
     }
@@ -144,7 +147,7 @@ export function writeDisplayCache(key: string | null, image: RgbaImage, options:
   const picture = { ...image, format: image.format ?? 'rgba8' };
   if (!validKey(key) || !validImage(picture) || clearing) return Promise.resolve(false);
   if (options.retain !== false) remember(key, picture);
-  if (!inTauri()) return Promise.resolve(peekDisplayCache(key) !== null);
+  if (!inTauri() || options.disk === false) return Promise.resolve(peekDisplayCache(key) !== null);
   // One active and one latest pending write, with no encoded copy until the
   // write begins. Reject views retaining a huge unrelated backing allocation.
   if (picture.data.buffer.byteLength > MAX_IMAGE_BYTES + 1024 * 1024) return Promise.resolve(peekDisplayCache(key) !== null);
@@ -155,7 +158,7 @@ export function writeDisplayCache(key: string | null, image: RgbaImage, options:
     const done = (stored: boolean) => resolve(generation === memoryGeneration && !clearing
       && (stored || peekDisplayCache(key) !== null));
     pendingWrite?.done(false);
-    pendingWrite = { key, image: picture, done };
+    pendingWrite = { key, image: picture, family:options.family, done };
     pumpWrites();
   });
 }
@@ -166,6 +169,12 @@ export async function displayCacheStatus(): Promise<DisplayCacheStatus | null> {
 export async function configureDisplayCache(capBytes: number): Promise<void> {
   if (inTauri()) await invoke('frame_cache_configure', { capBytes });
 }
+export async function relocateDisplayCache(parent: string|null): Promise<void> {
+  // Drain writes before changing the destination; future work uses the new root.
+  await clearPendingDisplayWrites();
+  await invoke('frame_cache_relocate',{parent});
+}
+async function clearPendingDisplayWrites(){pendingWrite?.done(false);pendingWrite=null;await writer;}
 export async function clearDisplayCache(): Promise<void> {
   clearDisplayMemoryCache();
   pendingWrite?.done(false); pendingWrite = null;

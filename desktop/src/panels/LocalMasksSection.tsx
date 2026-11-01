@@ -15,7 +15,7 @@ export function LocalMasksSection(){
     {!masks.length&&<p className="caption">{tz('Choose a tool, draw on the image, then adjust the selected region.','选择工具，在画面上绘制选区，再调整局部效果。')}</p>}
     {masks.length>0&&<div className="mask-list">{masks.map((m,i)=><div className={'mask-list-row'+(m.id===ui.selected?' selected':'')} key={m.id}>
       <button className="mask-eye" aria-label={m.enabled?tz('Disable mask','关闭蒙版'):tz('Enable mask','启用蒙版')} aria-pressed={m.enabled} disabled={!ready} onClick={()=>{beginGesture();changeMask(m.id,q=>({...q,enabled:!q.enabled}));}}>{m.enabled?'●':'○'}</button>
-      <button className="mask-select" data-testid={`select-mask-${i}`} disabled={!ready} aria-pressed={m.id===ui.selected} onClick={()=>maskUi.setState({selected:m.id,editing:true,overlay:true,erase:false})}>{m.name||`${maskKindName(m.kind)} ${i+1}`}</button>
+      <button className="mask-select" data-testid={`select-mask-${i}`} disabled={!ready} aria-pressed={m.id===ui.selected} onClick={()=>maskUi.setState({selected:m.id,editing:true,overlay:true,erase:false,brushRadius:null})}>{m.name||`${maskKindName(m.kind)} ${i+1}`}</button>
       <button className="mask-remove" aria-label={tz('Delete mask','删除蒙版')} disabled={!ready} onClick={()=>{beginGesture();changeMasks(list=>list.filter(q=>q.id!==m.id));if(ui.selected===m.id)maskUi.setState({selected:null,editing:false});}}>×</button>
     </div>)}</div>}
     {selected&&<>
@@ -27,10 +27,10 @@ export function LocalMasksSection(){
       <ToggleRow label={tz('Invert region','反选区域')} on={selected.inverted} disabled={!ready} onChange={inverted=>{beginGesture();changeMask(selected.id,m=>({...m,inverted}));}}/>
       <ScrubSlider label={tz('Amount','强度')} value={selected.amount*100} range={[0,100]} zero={100} format={v=>`${Math.round(v)} %`} disabled={!ready} onChange={v=>changeMask(selected.id,m=>({...m,amount:v/100}))}/>
       <ScrubSlider label={tz('Feather','羽化')} value={selected.feather*100} range={[0,100]} zero={50} format={v=>`${Math.round(v)} %`} disabled={!ready} onChange={v=>changeMask(selected.id,m=>({...m,feather:v/100}))}/>
-      {selected.kind==='brush'&&<ScrubSlider label={tz('Brush size','画笔大小')} value={selected.radius*100} range={[.2,40]} zero={6} format={v=>v.toFixed(1)} disabled={!ready} onChange={v=>changeMask(selected.id,m=>({...m,radius:v/100}))}/>}
-      {controls.map(([key,label,limit])=><ScrubSlider key={key} label={label} value={selected.adjustments[key]} range={[-limit,limit]} zero={0} format={v=>v.toFixed(key==='exposure'?2:0)} testId={`mask-${key}`} disabled={!ready||!selected.enabled} onChange={v=>changeMask(selected.id,m=>({...m,adjustments:{...m.adjustments,[key]:v}}))}/>)}
+      {selected.kind==='brush'&&<ScrubSlider label={tz('Brush size','画笔大小')} value={(ui.brushRadius??selected.radius)*100} range={[.2,40]} zero={6} format={v=>v.toFixed(1)} disabled={!ready} onChange={v=>maskUi.setState({brushRadius:v/100})}/>}
+      {controls.map(([key,label,limit])=><ScrubSlider key={key} label={tz('Local ','局部')+label} value={selected.adjustments[key]} range={[-limit,limit]} zero={0} format={v=>v.toFixed(key==='exposure'?2:0)} testId={`mask-${key}`} disabled={!ready||!selected.enabled} onChange={v=>changeMask(selected.id,m=>({...m,adjustments:{...m.adjustments,[key]:v}}))}/>)}
       <button className="btn" disabled={!ready} onClick={()=>{beginGesture();changeMask(selected.id,m=>({...m,adjustments:Object.fromEntries(Object.keys(m.adjustments).map(k=>[k,0]))as LocalGrade}));}}>{tz('Reset local adjustments','重置局部调整')}</button>
-      <p className="caption">{tz('Draw to replace a gradient. Drag its handles to refine it. Brush adds strokes; use Eraser to subtract. Ctrl+Z undoes a stroke.','拖动重画渐变，或拖动端点微调；画笔可追加笔画，橡皮擦可擦除。Ctrl+Z 撤销笔画。')}</p>
+      <p className="caption">{tz('Wheel: brush size. Hold Alt: temporary eraser. Draw to replace a gradient or drag its handles. Ctrl+Z undoes a stroke.','滚轮调整画笔大小，按住 Alt 临时擦除。拖动重画渐变，或拖动端点微调；Ctrl+Z 撤销笔画。')}</p>
     </>}
     {masks.length>=MAX_MASKS&&<p className="caption">{tz('Eight masks per photo.','每张照片最多八个蒙版。')}</p>}
   </Section>;

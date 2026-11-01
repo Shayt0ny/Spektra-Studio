@@ -1,4 +1,22 @@
-# SpektraLab Windows 1.3.4-win.8 · shayt0ny
+# Spektra Studio Windows · shayt0ny
+
+最新 Windows 版本：**1.0.4-win.1**。右侧新增独立「RAW 影调」页，位于「显影前」左侧；
+进入后显示整张 RAW 基底，可手动调整色温／色调、光线、RGB／通道曲线、色彩平衡与 HSL。
+随后回到原生胶片与相纸管线，配方保存和撤销与显影后调整独立。
+
+补齐并验证相机镜头模糊、颗粒密度扩散、放大机／扫描镜头模糊和扫描 USM 锐化控制，
+包含 Nikon Z50 II 与 Panasonic RW2 兼容修复。详见 [1.0.4 说明](WINDOWS_STUDIO_1.0.4.md)。
+
+此前 [1.0.3](WINDOWS_STUDIO_1.0.3.md) 的整体胶片强度、图集联动筛选、可调放大镜、
+16 位导出、持久撤销和分享配方继续保留。观片台采用独立实体灯箱式布局，可拖动胶片、
+一键散落／平铺、开关静态拟真灯箱和调节亮度；每台最多 12 张，快速观片不批量显影 RAW。
+原中性深灰与暖金配色、[AMD 安全预览](WINDOWS_AMD_PREVIEW_COMPATIBILITY.md) 和
+[观片台关闭修复](WINDOWS_LIGHTTABLE_CLOSE_FIX.md) 均包含在当前版本。
+台面操作不写入照片调色，图集销毁只清记录，不删除原文件。
+
+观片流程参考 **[YZH2006517/Photo-All](https://github.com/YZH2006517/Photo-All)**，
+感谢其开放的实现与工作流；来源版本、GPL 许可和参考范围见
+[Photo-All 来源说明](PHOTO_ALL_REFERENCE.md)。本项目独立集成，继续使用自身原生显影管线。
 
 胶片模拟软件 SpektraLab 的 **Windows 维护分支**。项目起源于 macOS，现在已有官方 Windows 测试版；本分支在此基础上整合兼容性修复与导入流程改进。打开 RAW 照片、选择胶片和相纸，模拟真实冲印过程。
 
@@ -42,11 +60,11 @@
 
 ## 📥 下载
 
-- `SpektraLab-1.3.4-win.7-shayt0ny-Windows-x64.zip`：完整解压后运行 `spektralab.exe`。
-- `SpektraLab-1.3.4-win.7-shayt0ny-Source.zip`：对应源码，构建方法见 [BUILD_WINDOWS_R4.md](BUILD_WINDOWS_R4.md)。
+- `Spektra-Studio-1.0.2-win.1-Windows-x64.zip`：完整解压后运行 `Spektra Studio.exe`。
+- `Spektra-Studio-1.0.2-win.1-Source.zip`：对应源码，构建方法见 [BUILD_WINDOWS_R4.md](BUILD_WINDOWS_R4.md)。
 
 请先完全退出旧版，保留解压后的整个文件夹。每个包内有逐文件校验清单，
-外部 `SpektraLab-1.3.4-win.7-shayt0ny-SHA256SUMS.txt` 用于核对两个压缩包。
+包内的 `FILES.sha256` 用于核对内容；源码包与应用包分开提供。
 本地生成发布包与 GitHub 上传是两个步骤；本说明未声称这些包已在线发布。
 
 ## 使用前请注意

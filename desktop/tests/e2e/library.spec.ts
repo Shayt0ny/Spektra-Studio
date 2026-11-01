@@ -1,0 +1,38 @@
+import { expect, test } from '@playwright/test';
+test('albums share records, linked filters narrow a fixed review range and originals remain untouched', async ({ page }) => {
+  await page.goto('/?open='); await expect(page.getByTestId('tier-badge')).toHaveText('full', { timeout: 25000 });
+  await page.getByTestId('lighttable-button').click(); await page.getByTestId('lt-mode-library').click();
+  const library = page.getByTestId('lt-library'); await expect(library.getByTestId('lt-library-card')).toHaveCount(8);
+  await library.getByRole('textbox', { name: 'New album name' }).fill('Owned gallery');
+  await library.getByRole('button', { name: 'Create from results', exact: true }).click();
+  await expect(library.getByTestId('lt-album')).toContainText('Owned gallery · 8');
+  await library.getByRole('button', { name: 'Analyze this range' }).click();
+  await expect(library).toContainText('Analyzed 8; unavailable 0.', { timeout: 30000 });
+  await library.getByTestId('lt-library-card').first().click();
+  await library.getByRole('textbox', { name: 'Manual content tags' }).fill('portrait, travel');
+  await library.getByRole('button', { name: 'Save tags', exact: true }).click();
+  await library.getByTestId('lt-filter-content').selectOption('portrait'); await expect(library.getByTestId('lt-library-card')).toHaveCount(1);
+  await expect(library.getByTestId('lt-filter-format')).toContainText('NEF · 1');
+  await library.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await library.getByRole('button', { name: 'Recycle album', exact: true }).click();
+  await library.getByTestId('lt-album').selectOption('trash'); await expect(library).toContainText('Only album records are removed.');
+  await library.getByRole('button', { name: 'Restore', exact: true }).click();
+  await library.getByTestId('lt-album').selectOption({ label: 'Owned gallery · 8' });
+  await library.getByTestId('lt-filter-content').selectOption('portrait'); await library.getByTestId('lt-review-results').click();
+  await expect(page.getByTestId('lt-film')).toHaveCount(1); await expect(page.getByTestId('lt-desk-page')).toHaveText('1 / 1 · 1 films');
+  await page.getByTestId('lt-close').click(); await page.getByTestId('lighttable-button').click(); await page.getByTestId('lt-mode-library').click();
+  await expect(library.getByTestId('lt-album')).toContainText('Owned gallery · 8');
+  await page.screenshot({ path: test.info().outputPath('albums-linked-filters.png') });
+});
+test('lens diameter and magnification are independent and only its local canvas is distorted', async ({ page }) => {
+  await page.goto('/?open='); await expect(page.getByTestId('tier-badge')).toHaveText('full', { timeout: 25000 });
+  await page.getByTestId('lighttable-button').click(); await page.getByTestId('lt-desk-loupe-toggle').click();
+  const film = page.locator('[data-testid="lt-film"][aria-pressed="true"]'), box = (await film.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); const lens = page.getByTestId('lt-desk-loupe');
+  await expect(lens).toBeVisible(); const diameter = await lens.getAttribute('data-diameter');
+  await page.getByRole('spinbutton', { name: 'Loupe magnification' }).fill('8');
+  await expect(lens).toHaveAttribute('data-magnification', '8'); await expect(lens).toHaveAttribute('data-diameter', diameter!);
+  await page.getByRole('slider', { name: 'Lens diameter' }).fill('140'); await expect(lens).toHaveAttribute('data-diameter', '140');
+  await expect(lens).toHaveAttribute('data-magnification', '8');
+  await page.getByRole('checkbox', { name: 'Glass refraction' }).uncheck(); await expect(lens).toHaveAttribute('data-refractive', 'false');
+});

@@ -1,0 +1,13 @@
+// Copyright (C) 2026 shayt0ny. SPDX-License-Identifier: GPL-3.0-or-later
+#version 450
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Input { float value[]; } source;
+layout(set = 0, binding = 1, std430) readonly buffer Meta { uint value[]; } meta;
+layout(set = 0, binding = 2, std430) writeonly buffer Output { float value[]; } target;
+void main() {
+    uint i = gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+    if (i >= meta.value[0]) return;
+    float x = source.value[i];
+    target.value[i] = meta.value[1] == 0u ? exp2(x * 3.321928094887362)
+        : log(max(x, 1e-10)) * 0.4342944819032518;
+}

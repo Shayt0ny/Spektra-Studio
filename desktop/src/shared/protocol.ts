@@ -102,6 +102,7 @@ export interface HelloResult {
   methods?: string[];
   /** Actual host output transforms and ICCs, in recipe wire names. */
   export_spaces?: string[];
+  export_formats?: string[];
   /** Processed display pixel transports, independent of output/file encodings. */
   view_formats?: PixelFormat[];
   /** Decoded original transports; absent means RGBA8-only legacy source preview. */
@@ -229,7 +230,7 @@ export interface RenderResult {
 export interface ExportImageParams {
   session: string;
   path: string;
-  format: 'tiff16' | 'tiff8' | 'jpeg' | 'png';
+  format: 'tiff16' | 'tiff8' | 'jpeg' | 'png' | 'png16' | 'webp-lossless';
   quality?: number;
   color_space?: 'sRGB' | 'display-p3' | 'prophoto' | 'adobe-rgb' | 'rec2020';
   long_edge?: number;

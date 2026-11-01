@@ -42,5 +42,22 @@ int main() {
     assert(raw->imgdata.color.cam_xyz[2][2] == 0.7374f);
     assert(raw->imgdata.color.pre_mul[0] > 0);
     assert(!raw->apply_missing_camera_profile());
-    std::cout << "camera profile: exact missing Z5 II / ZR calibrations supplied; existing profiles, Z8, other makes and channel layouts preserved\n";
+    raw = std::make_unique<spk::io::CameraLibRaw>();
+    auto& z50 = raw->imgdata.idata;z50.maker_index=LIBRAW_CAMERAMAKER_Nikon;z50.colors=3;
+    std::strcpy(z50.normalized_model,"Z50_2");
+    for(int r=0;r<3;r++)for(int c=0;c<4;c++)raw->imgdata.color.rgb_cam[r][c]=float(r==c);
+    assert(raw->apply_missing_camera_profile());
+    assert(raw->imgdata.color.cam_xyz[0][0]==1.1640f);
+    assert(raw->imgdata.color.cam_xyz[1][1]==1.3006f);
+    assert(raw->imgdata.color.cam_xyz[2][2]==.7380f);
+    assert(raw->imgdata.color.pre_mul[0]>0);
+    assert(!raw->apply_missing_camera_profile());
+    for(auto& row:raw->imgdata.color.cam_xyz)for(float& v:row)v=0;
+    assert(!raw->apply_missing_camera_profile()); // existing non-identity RGB calibration wins
+    for(int r=0;r<3;r++)for(int c=0;c<4;c++)raw->imgdata.color.rgb_cam[r][c]=float(r==c);
+    std::strcpy(z50.normalized_model,"Z50_2-unknown");assert(!raw->apply_missing_camera_profile());
+    std::strcpy(z50.normalized_model,"Z50_2");z50.maker_index=LIBRAW_CAMERAMAKER_Sony;assert(!raw->apply_missing_camera_profile());
+    z50.maker_index=LIBRAW_CAMERAMAKER_Nikon;z50.dng_version=0x1040000;assert(!raw->apply_missing_camera_profile());z50.dng_version=0;
+    z50.maker_index=LIBRAW_CAMERAMAKER_Nikon;z50.colors=4;assert(!raw->apply_missing_camera_profile());
+    std::cout << "camera profile: exact missing Z5 II / ZR / Z50 II calibrations supplied; existing profiles, unknown models, other makes and channel layouts preserved\n";
 }

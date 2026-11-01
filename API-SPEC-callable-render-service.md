@@ -1,5 +1,14 @@
 # API Spec — Callable Render Service (implementation reference)
 
+Windows framing extension (2026-11-01): `overscan_follow_crop` is an additive
+boolean SHOOT field, path `film_render.overscan.follow_crop`, engine default
+false. A single-frame custom gate follows the pre-film crop with the selected
+stock/gauge's cross-film scale; it does not stretch the picture or change a
+material profile. False retains the strict physical gate aspect and existing
+pixels; half-frame pairs retain their previous physical path. The Windows
+host advertises this extension as `hello.view_options: crop_frame`; its app
+defaults single-photo borders to follow the crop. See HOST-PROTOCOL.md.
+
 Windows host extension, 2026-10-31: RAW decoder policy (`auto`, `libraw`,
 `candidate`) is a host decode option, recorded with the frozen source snapshot.
 It never crosses the film/paper parameter surface; see desktop/HOST-PROTOCOL.md.
@@ -1196,6 +1205,30 @@ the RAW-decoder difference already declared, not something this field can close.
 Test: `engine/tests/host_no_film.py` (a host CTest, `spk_host_no_film_workflow`).
 Red on the host before this change (it wrote the print: max 38, mean 11.0 codes
 from the decode).
+
+## 20. Windows spatial controls (2026-11-01, shayt0ny)
+
+Additive `params_schema` float fields; transport/schema versions remain 1.
+All four require pipeline rebuilds (`live: false`). Existing `lens_blur_um`
+and `scanner_lens_blur` are unchanged. Sparse/old recipes retain these defaults.
+
+| wire field | native path | layer | range | default | meaning |
+|---|---|---|---|---|---|
+| `grain_blur` | `film_render.grain.blur` | shoot | 0–10 | 0.65 | Existing density Gaussian after grain; original model's pixels; inactive grain bypasses it. |
+| `enlarger_lens_blur` | `enlarger.lens_blur` | print | 0–20 | 0 | Gaussian sigma in full-output pixels, scaled by the render tier. Log paper exposure → linear light → blur → log → paper development; never blur density curves. Direct film scans and DI bypass this stage. |
+| `scanner_unsharp_radius` | `scanner.unsharp_mask.0` | print | 0–20 | 0.7 | Existing USM sigma in full-output pixels; scaled by the tier. |
+| `scanner_unsharp_amount` | `scanner.unsharp_mask.1` | print | 0–4 | 0.7 | Existing USM gain; zero radius or amount skips sharpening. |
+
+The enlarger operation is a Windows/native extension: reviewed spektrafilm
+revision `3bb2c2d2801ff68b92019cf1dbcbb133d60832bc` declares this parameter
+but has no executing enlarger lens blur. Film/paper material data is unchanged.
+`print_spectral` is now a Neighbourhood stage, with demand from this same sigma;
+FIR needs a halo, IIR keeps the whole frame. Radius zero preserves old pixels.
+Frontend sidecar fields are `cameraLensBlurUm`, `grainBlur`, `enlargerLensBlur`,
+`scannerUnsharpRadius`, `scannerUnsharpAmount`. Export freezes these through
+the existing full parameter snapshot. They affect film views, not RAW/source
+views. Tests: `host_spatial_controls.py`, `spatialControls.test.ts` and
+`spatial-controls.spec.ts`; defaults are compared to the released 1.0.3 host.
 
 ### Personal Windows fork integration (2026-10-29)
 

@@ -14,6 +14,7 @@ import { openDialog, openFolderDialog, openExport, restartHost } from './actions
 import { settingsStore } from '../state/settings';
 import { dropImportStore } from '../state/dropImport';
 import { platform } from '../platform';
+import { lighttableStore } from '../lighttable/review';
 
 export interface KeyLike {
   key: string;
@@ -112,6 +113,7 @@ export function webviewOwnsMenuKeys(userAgent = navigator.userAgent): boolean {
 export function installKeys(menuOwns: Set<string> = new Set()): () => void {
   const table = shortcutTable();
   const onKey = (e: KeyboardEvent) => {
+    if (lighttableStore.getState().open) return;
     if (dropImportStore.getState().open) return;
     if (isTypingKey(e)) return;
     // The native menu's accelerators: the menu runs them, not this handler.

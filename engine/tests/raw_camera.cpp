@@ -19,5 +19,12 @@ int main() {
     raw->imgdata.idata.colors = 3;
     if (raw->adobe_coeff(LIBRAW_CAMERAMAKER_Fujifilm, "GFX100RF-unknown")) return 4;
     if (raw->adobe_coeff(LIBRAW_CAMERAMAKER_Canon, "GFX100RF")) return 5;
+    for(const auto* name:{"DC-ZS300","DC-TZ300","DC-TX3"}) {
+        raw=std::make_unique<Camera>();raw->imgdata.idata.colors=3;
+        if(!raw->adobe_coeff(LIBRAW_CAMERAMAKER_Panasonic,name)||raw->uncalibrated())return 6;
+        if(std::abs(raw->imgdata.color.cam_xyz[0][0]-.7790f)>1e-6f||std::abs(raw->imgdata.color.cam_xyz[1][1]-1.1870f)>1e-6f)return 7;
+    }
+    raw=std::make_unique<Camera>();raw->imgdata.idata.colors=3;
+    if(raw->adobe_coeff(LIBRAW_CAMERAMAKER_Panasonic,"DC-ZS300-unknown")||raw->adobe_coeff(LIBRAW_CAMERAMAKER_Sony,"DC-ZS300"))return 8;
     std::cout << "GFX100RF calibration and exact model boundary passed\n";
 }

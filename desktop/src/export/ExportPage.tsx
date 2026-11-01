@@ -15,6 +15,7 @@ import { host, type ProofReply } from '../host/client';
 import { Thumb } from '../windows/Filmstrip';
 import { GEOMETRY_DEFAULT } from '@shared/geometry';
 import { isPairPath } from '@shared/pair';
+import { isRawPath } from '@shared/whiteBalance';
 import { paintOutput } from '../canvas/colorSpace';
 import { type ExportRecipe, editRecipe, recipeSummary, DEFAULT_RECIPES, NAME_TOKENS, EXPORT_SPACES, type NameToken, decodeRecipes, extensionOf } from './recipes';
 import { captureExportFrames, exportCube, exportFrame, renderProof, hostWrites, outputFor, targetFor, type ExportJob, type ExportOutcome } from './exporter';
@@ -52,7 +53,7 @@ export function ExportPage() {
   const gate = useSession((s) => s.gate);
   const native = useSession((s) => s.nativeSize);
   const saved = useSession((s) => s.savedGeometry);
-  const [proofResult, setProofResult] = useState<{ path: string; format: ExportRecipe['format']; noFilm: boolean; image: ProofReply } | null>(null);
+  const [proofResult, setProofResult] = useState<{ path: string; format: ExportRecipe['format']; noFilm: boolean; image: ProofReply; sizeKey:string } | null>(null);
   const [proofStatus, setProofStatus] = useState('');
   const [proofBusy, setProofBusy] = useState(false);
   const [proofEdge, setProofEdge] = useState(2048);
@@ -62,6 +63,7 @@ export function ExportPage() {
   const [log, setLog] = useState<{ name: string; outcome: ExportOutcome }[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [sample, setSample] = useState('');
+  const [destination,setDestination]=useState('');
   const stop = useRef(false);
   const active = useRef<ExportJob | null>(null);
   const proof = useRef<HTMLCanvasElement>(null);
@@ -77,8 +79,9 @@ export function ExportPage() {
   const proofRecipe = useMemo<ExportRecipe>(() => ({ ...DEFAULT_RECIPES[0]!,
     format: r.format, bitDepth: r.bitDepth, colorSpace: r.colorSpace, longEdge: r.longEdge,
   }), [r.format, r.bitDepth, r.colorSpace, r.longEdge]);
-  const proofNoFilm = proofRecipe.format !== 'di' && sidecar.noFilm === true;
-  const bypassRefusal = sidecar.noFilm && proofRecipe.format === 'di' ? tz('Enable film simulation before exporting a Digital Intermediate.', '请启用胶片模拟后再导出数字中间片。') : !proofNoFilm ? null
+  const proofNoFilm = proofRecipe.format === 'raw-master' || proofRecipe.format === 'original' || proofRecipe.format !== 'di' && sidecar.noFilm === true;
+  const sizeKey=JSON.stringify([selection,proofRecipe,geometry,params,native,pair]);
+  const bypassRefusal = proofRecipe.format === 'original' ? null : sidecar.noFilm && proofRecipe.format === 'di' ? tz('Enable film simulation before exporting a Digital Intermediate.', '请启用胶片模拟后再导出数字中间片。') : !proofNoFilm ? null
     : pair || (selection && isPairPath(selection)) || params.filmEdge.pair
       ? tz('Export without film simulation is unavailable for half-frame pairs. Enable film simulation.', '半格拼接不能关闭胶片模拟，请启用胶片模拟后导出。')
       : !gate.noFilm
@@ -99,7 +102,9 @@ export function ExportPage() {
 
   useEffect(() => {
     if (!selection) return;
-    void targetFor(r, { path: selection, params }, catalog).then((x) => setSample(`${x.base}.${extensionOf(r)}`));
+    let cancelled=false;
+    void targetFor(r, { path: selection, params }, catalog).then((x) => {if(!cancelled){setSample(`${x.base}.${r.format === 'original' ? selection.split(/[\\/]/).at(-1)?.split('.').at(-1) ?? 'raw' : extensionOf(r)}`);setDestination(x.dir);}}).catch(()=>{if(!cancelled){setSample('');setDestination('');}});
+    return()=>{cancelled=true;};
   }, [r, selection, params, catalog]);
 
   useLayoutEffect(() => {
@@ -153,7 +158,7 @@ export function ExportPage() {
           const result = await renderProof(recipe, item.frame, catalog, hello.methods, display ?? 'srgb', proofEdge, generation,
             { frameOptions: hello.frame_options, cancelled: () => obsolete, active: (value) => { job = value; } });
           if (!obsolete && generation === proofGeneration.current && result) {
-            setProofResult({ path: selection, format: recipe.format, noFilm: proofNoFilm, image: result });
+            setProofResult({ path: selection, format: recipe.format, noFilm: proofNoFilm, image: result,sizeKey });
             setProofBusy(false); setProofStatus('');
           }
         } catch (e) {
@@ -165,14 +170,20 @@ export function ExportPage() {
       obsolete = true; clearTimeout(timer);
       if (job) void host().cancel(job.session, job.progressId).catch(() => {});
     };
-  }, [open, selection, batch, developing, engineSession, sidecar, native, metadata, pair, pairInfo, proofRecipe, proofNoFilm, bypassRefusal, hello, catalog, gate, display, proofEdge]);
+  }, [open, selection, batch, developing, engineSession, sidecar, native, metadata, pair, pairInfo, proofRecipe, proofNoFilm, bypassRefusal, hello, catalog, gate, display, proofEdge,sizeKey]);
 
   if (!open) return null;
   const frames = picked.length ? picked : selection ? [selection] : [];
   const writesEdits = hostWrites(hello?.methods as string[] | undefined);
   const spaceSupported = ['sRGB', 'display-p3', 'prophoto'].includes(r.colorSpace) || !!hello?.export_spaces?.includes(r.colorSpace);
-  const supported = !bypassRefusal && (r.format === 'di' ? gate.digitalIntermediate && !!hello?.methods?.includes('export_cineon') : writesEdits && spaceSupported);
-  const size = native ? outputFor(r, geometry, native) : null;
+  const codecSupported = !(r.format === 'webp' || r.format === 'png' && r.bitDepth === 16) || !!hello?.export_formats?.includes(r.format === 'webp' ? 'webp-lossless' : 'png16');
+  const supported = !bypassRefusal && codecSupported && (r.format === 'original' ? !!hello?.methods?.includes('copy_original') : r.format === 'raw-master' ? !!selection && isRawPath(selection) && gate.noFilm : r.format === 'di' ? gate.digitalIntermediate && !!hello?.methods?.includes('export_cineon') : writesEdits && spaceSupported);
+  const verifiedSize=proofImage&&proofResult?.sizeKey===sizeKey?{width:proofImage.proof.file_width,height:proofImage.proof.file_height}:null;
+  const size = verifiedSize??(native ? outputFor(r, geometry, native) : null);
+  const quickPreset=(id:string)=>{
+    const index=recipes.findIndex(r=>r.id===id);if(index>=0){setCurrent(index);return;}
+    const preset=DEFAULT_RECIPES.find(r=>r.id===id);if(preset){save([...recipes,structuredClone(preset)]);setCurrent(recipes.length);}
+  };
   const proofMessage = proofBusy
     ? proofImage ? tz('Updating export proof…', '正在更新导出软打样…') : tz('Preparing export proof…', '正在生成导出软打样…')
     : proofStatus;
@@ -208,6 +219,7 @@ export function ExportPage() {
         const outcome: ExportOutcome = 'error' in item ? { kind: 'failed', message: item.error }
           : await exportFrame(recipe, item.frame, state.catalog, methods, {
             tiffOptions: state.hello?.tiff_options,
+            exportFormats: state.hello?.export_formats,
             frameOptions: state.hello?.frame_options,
             cancelled: () => stop.current, active: (job) => { active.current = job; },
           });
@@ -261,6 +273,23 @@ export function ExportPage() {
       <div className="export-body">
         <aside className="rail left" style={{ pointerEvents: batch ? 'none' : undefined }}>
           <div className="rail-scroll">
+              <div className="export-quick-presets">
+                <button className="btn" data-testid="preset-share" onClick={()=>quickPreset('share-srgb')}>{tz('Social sharing','社交分享')}</button>
+                <button className="btn" data-testid="preset-original" onClick={()=>quickPreset('jpeg-original')}>{tz('Full-size JPEG','原尺寸 JPG')}</button>
+                <button className="btn" data-testid="preset-editing" onClick={()=>quickPreset('tiff-prophoto')}>{tz('Further editing','继续修图')}</button>
+                <button className="btn" data-testid="export-print-lut" disabled={!hello?.methods?.includes('export_cube')||!catalog.stock(params.printStock)?.hasPreviewLUT}
+                  title={tz('Paper conversion for matched normalized negative-density input; not for ordinary photographs or Cineon DI. Excludes film and Post-Dev adjustments.','用于匹配的归一化负片密度输入，不能直接用于普通照片或 Cineon DI；不包含胶片和显影后调色。')}
+                  onClick={()=>void exportCube(params.printStock,`${params.printStock}.cube`).catch(e=>platform().message('Spektra Studio',String(e),'error'))}>{tz('Paper LUT .cube…','相纸 LUT .cube…')}</button>
+              </div>
+              <p className="caption">{tz('Paper LUT is an advanced density conversion table, not the final color look of this photo.','相纸 LUT 是高级密度转换表，不是当前照片的最终调色 LUT。')}</p>
+              <div className="export-output-summary" data-testid="export-output-summary">
+                <strong>{recipeSummary(r)}{r.format==='jpeg'?` · ${r.quality}%`:''}</strong>
+                <div>{tz('Current photo: ','当前照片：')}{size?`${size.width} × ${size.height} px`:'—'}{verifiedSize?'':tz(' (estimated)','（预估）')} · {r.longEdge===0?tz('Original size','原始尺寸'):tz(`Long edge ${r.longEdge} px`,`长边 ${r.longEdge} 像素`)}</div>
+                {destination&&<div className="export-destination" title={destination}>{tz('Save to: ','保存至：')}{destination}</div>}
+                {sample&&<div className="export-destination" title={sample}>{sample}</div>}
+                {r.longEdge>0&&<div className="caption">{tz('Long edge is limited; smaller images are not enlarged. Choose Full-size JPEG to retain resolution.','此配方限制长边，较小图片不会放大；需要完整分辨率可选「原尺寸 JPG」。')}</div>}
+                {r.id==='tiff-prophoto'&&<div className="caption">{tz('16-bit TIFF retains tonal precision for further editing in color-managed software.','16 位 TIFF 保留更多色阶，适合在支持色彩管理的软件中继续修图。')}</div>}
+              </div>
             <Section
               id="exp-recipes"
               title={tz('Export Formula', '导出配方')}
@@ -367,26 +396,30 @@ export function ExportPage() {
                     { value: 'jpeg', label: 'JPEG' },
                     { value: 'png', label: 'PNG' },
                     { value: 'tiff', label: 'TIFF' },
+                    { value: 'webp', label: tz('WebP lossless', 'WebP 无损'), disabled: !hello?.export_formats?.includes('webp-lossless') },
+                    { value: 'raw-master', label: tz('RAW development master', 'RAW 显影母版'), disabled: !gate.noFilm },
+                    { value: 'original', label: tz('Original copy + recipe', '原片复制＋配方'), disabled: !hello?.methods?.includes('copy_original') },
                     { value: 'di', label: tz('Digital Intermediate', '数字中间片'), disabled: !sessionStore.getState().gate.digitalIntermediate },
                   ]}
-                  onChange={(v) => edit({ format: v, bitDepth: v === 'jpeg' || v === 'png' ? 8 : r.bitDepth })}
+                  onChange={(v) => edit({ format: v, bitDepth: v === 'jpeg' || v === 'webp' ? 8 : v === 'raw-master' || v === 'original' ? 16 : r.bitDepth })}
                 />
                 <PillMenu
                   value={r.bitDepth}
-                  disabled={r.format !== 'tiff'}
-                  reason={tz('JPEG and PNG are 8-bit on this host.', '此处 JPEG 与 PNG 为 8 位。')}
+                  disabled={r.format !== 'tiff' && r.format !== 'png'}
+                  reason={tz('JPEG and WebP are 8-bit. RAW masters are 16-bit TIFF.', 'JPEG 与 WebP 为 8 位，RAW 母版为 16 位 TIFF。')}
                   options={[
                     { value: 8, label: tz('8 bit', '8 位') },
-                    { value: 16, label: tz('16 bit', '16 位') },
+                    { value: 16, label: tz('16 bit', '16 位'), disabled: r.format === 'png' && !hello?.export_formats?.includes('png16') },
                   ]}
                   onChange={(v) => edit({ bitDepth: v })}
                 />
               </div>
+              {(r.format === 'raw-master' || r.format === 'original' || r.format === 'webp') && <p className="caption">{r.format === 'raw-master' ? tz('RAW decode only, including its white balance, RAW tone/colour, lens correction and optional camera curve; no film, print grade, masks or crop. Full original dimensions, TIFF 16-bit.', '仅 RAW 显影，包含白平衡、RAW 影调／色彩、镜头校正与可选机内曲线；不含胶片、显影后调色、蒙版和裁剪。原尺寸 16 位 TIFF。') : r.format === 'original' ? tz('Copies original bytes and a separate Spektra recipe. Preview is a decode reference; edits are not applied to the copied file. Existing files are never overwritten.', '逐字节复制原片，另附 Spektra 配方。预览仅为显影参考，复制文件不应用编辑，不覆盖已有文件。') : tz('8-bit lossless RGB encoding with ICC/EXIF. It does not recover information absent from an 8-bit source. Maximum edge: 16383 px.', '8 位无损 RGB 编码，保留 ICC／EXIF；不能恢复原片缺失的信息，最长边上限 16383 像素。')}</p>}
               <PillMenu
                 label={tz('Color Space', '色彩空间')}
                 value={r.colorSpace}
                 fill
-                disabled={r.format === 'di'}
+                disabled={r.format === 'di' || r.format === 'original'}
                 options={EXPORT_SPACES}
                 onChange={(v) => edit({ colorSpace: v })}
               />
@@ -402,9 +435,9 @@ export function ExportPage() {
               </>}
               <div className="row">
                 <span className="row-label">{tz('Long Edge', '长边')}</span>
-                <Checkbox on={r.longEdge === 0} label={tz('Original size', '原始尺寸')} onChange={(v) => edit({ longEdge: v ? 0 : 3000 })} />
+                <Checkbox on={r.format === 'raw-master' || r.format === 'original' || r.longEdge === 0} disabled={r.format === 'raw-master' || r.format === 'original'} label={tz('Original size', '原始尺寸')} onChange={(v) => edit({ longEdge: v ? 0 : 3000 })} />
                 <span className="caption">{tz('Original', '原始')}</span>
-                {r.longEdge > 0 && <NumberField value={r.longEdge} decimals={0} onCommit={(v) => edit({ longEdge: Math.max(16, Math.round(v)) })} />}
+                {r.longEdge > 0 && r.format !== 'raw-master' && r.format !== 'original' && <NumberField value={r.longEdge} decimals={0} onCommit={(v) => edit({ longEdge: Math.max(16, Math.round(v)) })} />}
                 <span className="caption num">{size ? `${size.width} × ${size.height}` : ''}</span>
               </div>
             </Section>
@@ -412,7 +445,7 @@ export function ExportPage() {
               {!spaceSupported && <div className="caption">{tz('Update the engine to export this colour space.', '请更新引擎以导出此色彩空间。')}</div>}
               {bypassRefusal && <div className="caption">{bypassRefusal}</div>}
               <div className="caption">
-                {r.format === 'di'
+                {r.format === 'raw-master' || r.format === 'original' ? recipeSummary(r) : r.format === 'di'
                   ? tz('Cineon log, 16-bit, untagged. Includes crop and rotation; Post-Dev is excluded. A view preview and both view LUTs accompany the file.', 'Cineon 对数、16 位、不嵌入 ICC。保留裁剪和旋转，不包含显影后调整；文件附带视图预览和两个显示 LUT。')
                   : sidecar.noFilm
                   ? tz('The decoded photograph is exported with Post-Dev, crop and output colour conversion. Film simulation, Film Edge and Date Back do not apply.', '导出解码后的照片，保留显影后调整、裁剪和输出色彩转换，不应用胶片模拟、片边和日期后背。')

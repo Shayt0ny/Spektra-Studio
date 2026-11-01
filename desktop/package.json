@@ -1,7 +1,7 @@
 {
   "name": "spektralab",
   "productName": "Spektra Studio",
-  "version": "1.0.0-win.1",
+  "version": "1.0.4-win.1",
   "description": "Spektra Studio — film and print emulation for Linux and Windows",
   "license": "GPL-3.0-or-later",
   "author": {

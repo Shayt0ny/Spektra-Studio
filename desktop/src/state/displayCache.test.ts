@@ -29,6 +29,10 @@ beforeEach(async () => {
 });
 
 describe('bounded recent display pictures', () => {
+  it('retains live interaction previews only in RAM and passes stable photo families to disk',async()=>{
+    await cache.writeDisplayCache(key(1),image(),{disk:false});expect(fake.invoke).not.toHaveBeenCalled();expect(cache.peekDisplayCache(key(1))).not.toBeNull();
+    await cache.writeDisplayCache(key(2),image(),{family:'owned-photo'});const frame=decodeFrame(new Uint8Array(fake.invoke.mock.calls[0]![1]));expect((frame.header as {metadata:{family:string}}).metadata.family).toBe('owned-photo');
+  });
   it('makes a completed render available synchronously before disk writing finishes', async () => {
     const disk = deferred<void>(); fake.invoke.mockReturnValue(disk.promise);
     const picture = image();

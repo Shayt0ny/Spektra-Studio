@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "spektralab"
-version = "1.0.0-win.1"
+version = "1.0.4-win.1"
 dependencies = [
  "log",
  "serde",

@@ -14,6 +14,16 @@ public:
     explicit CameraLibRaw(unsigned flags = LIBRAW_OPTIONS_NO_DATAERR_CALLBACK) : LibRaw(flags) {}
 protected:
     int adobe_coeff(unsigned make, const char* model, int internal_only = 0) override {
+        // DC-ZS300 / TZ300 / TX3 calibration in RawSpeed cameras.xml is
+        // identical to LibRaw's DC-ZS200: 7790,-2736,-755 / -3452,11870,1769 /
+        // -628,1647,4898. Reuse the existing LibRaw coefficient lookup only.
+        // An upstream/file-supplied calibration always wins. No sensor levels,
+        // geometry, file model or decoder are rewritten. See Panasonic notice.
+        if(make==LIBRAW_CAMERAMAKER_Panasonic && model && imgdata.idata.colors==3 && !imgdata.idata.dng_version &&
+            (!std::strcmp(model,"DC-ZS300")||!std::strcmp(model,"DC-TZ300")||!std::strcmp(model,"DC-TX3"))) {
+            const int found=LibRaw::adobe_coeff(make,model,internal_only);
+            return found?found:LibRaw::adobe_coeff(make,"DC-ZS200",internal_only);
+        }
         if (make != LIBRAW_CAMERAMAKER_Fujifilm || !model ||
             (std::strcmp(model, "GFX100RF") && std::strcmp(model, "GFX 100RF")))
             return LibRaw::adobe_coeff(make, model, internal_only);

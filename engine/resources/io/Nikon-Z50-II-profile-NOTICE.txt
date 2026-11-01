@@ -1,0 +1,21 @@
+Nikon Z50 II (LibRaw normalized model Z50_2) missing calibration compatibility
+2026-11-01; integration copyright (C) 2026 shayt0ny.
+
+RawSpeed camera data entry NIKON CORPORATION / NIKON Z50_2 /
+14bit-compressed has the same XYZ-to-camera calibration as LibRaw's existing
+Nikon Z 50 entry: 11640 -4829 -1079; -5107 13006 2325; -972 1711 7380.
+This adapter reuses the existing LibRaw coefficient lookup, without changing
+the recorded model, sensor levels, geometry, compression or decoder checks.
+Only the exact normalized Nikon model Z50_2, with three channels and no
+existing XYZ/camera RGB calibration, receives the compatibility lookup.
+
+Verification: RawSpeed contributors, data/cameras.xml, retrieved 2026-11-01:
+https://github.com/darktable-org/rawspeed/blob/develop/data/cameras.xml
+RawSpeed camera data: CC BY-SA 3.0.
+https://creativecommons.org/licenses/by-sa/3.0/
+The reused LibRaw colordata.cpp coefficient lookup is LGPL 2.1 / CDDL:
+https://github.com/LibRaw/LibRaw/blob/0.22.2/src/tables/colordata.cpp
+
+Stable decoding still reports corrupt/unsupported compression; Auto may use
+the isolated candidate decoder, which shares this missing-profile adapter.
+No film/paper data or AMD preview-format policy is changed.

@@ -12,6 +12,35 @@ const response = (generation: number) => ({ result: { generation, tier: 'live', 
 const state = async () => ({ phase: 'ready', hello: { view_formats: ['rgba8'] } });
 
 describe('Host.renderView', () => {
+  it('refuses a host returning RGBA16 after an AMD-safe RGBA8 request', async () => {
+    const r = response(12), request = vi.fn().mockResolvedValue({ result: { ...r.result,
+      image: { ...r.result.image, format: 'rgba16', row_bytes: 8 } }, payload: new Uint8Array(8) });
+    const host = new Host({ request, state: async () => ({ phase: 'ready', hello: { backend: { device_name: 'AMD Radeon RX 6600' }, view_formats: ['rgba8', 'rgba16'] } }) } as unknown as Transport);
+    await expect(host.renderView('s1', 'live', options())).rejects.toThrow('requested preview format');
+    expect(request.mock.calls[0]![1].format).toBe('rgba8');
+  });
+  it.each(['AMD Radeon RX 6600', 'Radeon RX 7900 XTX', 'AMD Radeon(TM) Graphics', 'Advanced Micro Devices, Inc.'])('uses safe eight-bit previews on %s', async (device) => {
+    const request = vi.fn(async (_method: string, params: Record<string, unknown>) => {
+      const format = params.format, bytes = format === 'rgba16' ? 8 : 4;
+      return { result: { ...response(12).result, image: { ...response(12).result.image, format, row_bytes: bytes } }, payload: new Uint8Array(bytes) };
+    });
+    const host = new Host({ request, state: async () => ({ phase: 'ready', hello: { backend: { device_name: device },
+      view_formats: ['rgba8', 'rgba16'], source_formats: ['rgba8', 'rgba16'] } }) } as unknown as Transport);
+    const view = await host.renderView('s1', 'full', options());
+    const original = await host.renderSource('s1', { long_edge: 2048, display: 'srgb', generation: 12 });
+    expect(view.format).toBe('rgba8'); expect(original.format).toBe('rgba8');
+    expect(request.mock.calls.map((call) => call[1].format)).toEqual(['rgba8', 'rgba8']);
+  });
+
+  it.each(['NVIDIA GeForce RTX 4060', 'Intel(R) Arc(TM) A770 Graphics', 'Intel(R) UHD Graphics'])('retains advertised 16-bit previews on %s', async (device) => {
+    const request = vi.fn(async (_method: string, params: Record<string, unknown>) => ({
+      result: { ...response(12).result, image: { ...response(12).result.image, format: params.format, row_bytes: 8 } }, payload: new Uint8Array(8),
+    }));
+    const host = new Host({ request, state: async () => ({ phase: 'ready', hello: { backend: { device_name: device },
+      view_formats: ['rgba8', 'rgba16'], source_formats: ['rgba8', 'rgba16'] } }) } as unknown as Transport);
+    expect((await host.renderView('s1', 'live', options())).format).toBe('rgba16');
+    expect((await host.renderSource('s1', { long_edge: 2048, display: 'srgb', generation: 12 })).format).toBe('rgba16');
+  });
   it('requires an advertised no_film option before sending a bypass request', async () => {
     const request = vi.fn().mockResolvedValue(response(12));
     const legacy = new Host({ request, state } as unknown as Transport);

@@ -1,13 +1,13 @@
 // Export immutable frame settings. The host grades, crops, converts colour
 // and writes atomically; full-resolution pixels never enter the webview.
 
-import { type Adjustments, curveTables, isNeutral, layer2Pixel, layer2Uniforms } from '@shared/adjustments';
+import { type Adjustments, ADJUSTMENTS_DEFAULT, curveTables, isNeutral, layer2Pixel, layer2Uniforms } from '@shared/adjustments';
 import { type Geometry, GEOMETRY_DEFAULT, isIdentity, outputSize, sourcePoint } from '@shared/geometry';
 import { canvasGeometryFor, resolveFilmEdgeParams, sourceGeometryFor } from '@shared/filmEdge';
 import type { FileMetadata, PairInfo } from '@shared/protocol';
 import { decodePair, isPairPath, pairFitRegion, pairSnapshotFor, resolvePairParams, sourcePairLayout, type HalfFramePair } from '@shared/pair';
 import { type FilmParams, type FeatureGate, filmFormatMM, fullDelta, normalizeStockPair } from '@shared/params';
-import { type DecodeSettings, type Sidecar, decodeSidecar, newSidecar } from '@shared/sidecar';
+import { type DecodeSettings, type Sidecar, decodeSidecar, portableRecipe, filmStrengthWire, newSidecar } from '@shared/sidecar';
 import { decodeWire, isRawPath } from '@shared/whiteBalance';
 import type { StockCatalog } from '@shared/stocks';
 import { latitudeRequest } from '@shared/latitude';
@@ -20,6 +20,7 @@ export interface FrameToExport {
   path: string;
   session?: string;
   noFilm: boolean;
+  filmStrength?: number;
   params: FilmParams;
   adjustments: Adjustments;
   geometry: Geometry;
@@ -35,6 +36,7 @@ export interface FrameToExport {
   scenePlacementSide?: 'right';
   sourceGeometry?: Geometry;
   pair?: HalfFramePair & { printEffects?: boolean };
+  recipe?: Record<string, unknown>;
 }
 
 export type ExportOutcome =
@@ -78,6 +80,7 @@ function snapshotGeometry(sidecar: Sidecar, params: FilmParams, gate: FeatureGat
   const noFilm = sidecar.noFilm === true;
   return {
     noFilm,
+    filmStrength: sidecar.filmStrength,
     geometry: canvasGeometryFor(params, sidecar.geometry, gate, noFilm),
     sourceGeometry: sourceGeometryFor(params, sidecar.geometry, gate, noFilm) ?? GEOMETRY_DEFAULT,
     filmGeometry: canvasGeometryFor(params, sidecar.geometry, gate),
@@ -118,7 +121,7 @@ export async function captureExportFrames(
         result.push({ path, frame: structuredClone({ path, session: active?.session, params,
           adjustments: sidecar.adjustments, ...snapshotGeometry(sidecar, params, frozenGate),
           decode: sidecar.decode, gate: frozenGate, native, pair: pairSnapshotFor(pair, params),
-          dateTaken: shots.left?.metadata?.datetime_original ?? shots.right?.metadata?.datetime_original,
+          dateTaken: shots.left?.metadata?.datetime_original ?? shots.right?.metadata?.datetime_original, recipe: portableRecipe(sidecar),
           scenePlacement: sidecar.placementNeedsFit ? { ...latitudeRequest(params.sceneLatitude), region: pairFitRegion(pair, params.placementIsRight) } : undefined,
           scenePlacementSide: sidecar.placementNeedsFit && params.placementIsRight ? 'right' : undefined,
         }) });
@@ -138,7 +141,7 @@ export async function captureExportFrames(
         path, session: active?.session, params, adjustments: sidecar.adjustments,
         ...snapshotGeometry(sidecar, params, frozenGate),
         decode: sidecar.decode, gate: frozenGate, native,
-        dateTaken: active?.dateTaken ?? info?.metadata.datetime_original,
+        dateTaken: active?.dateTaken ?? info?.metadata.datetime_original, recipe: portableRecipe(sidecar),
         scenePlacement: sidecar.placementNeedsFit ? latitudeRequest(params.placementIsRight ? params.sceneLatitudeOther : params.sceneLatitude) : undefined,
       }) });
     } catch (e) {
@@ -202,6 +205,7 @@ export function filePixels(
 }
 
 export function outputFor(r: ExportRecipe, g: Geometry, native: { width: number; height: number }) {
+  if (r.format === 'raw-master' || r.format === 'original') return native;
   const o = outputSize(g, native);
   if (!r.longEdge || r.longEdge >= Math.max(o.width, o.height)) return o;
   const k = r.longEdge / Math.max(o.width, o.height);
@@ -213,6 +217,7 @@ export interface ExportJob {
   progressId: string;
 }
 export interface ExportControl {
+  exportFormats?: readonly string[];
   tiffOptions?: readonly string[];
   frameOptions?: readonly string[];
   cancelled?: () => boolean;
@@ -223,7 +228,9 @@ let exportSerial = 0;
 /** Ordinary output follows the saved display mode. DI requires film simulation
  * and uses the negative's film-side geometry and placement. */
 function recipeView(r: ExportRecipe, f: FrameToExport, control: ExportControl) {
-  const di = r.format === 'di', noFilm = !di && f.noFilm;
+  const master = r.format === 'raw-master' || r.format === 'original';
+  if (r.format === 'raw-master' && !isRawPath(f.path)) throw new Error(tz('RAW development masters require a RAW source.', 'RAW 显影母版仅适用于 RAW 原片。'));
+  const di = r.format === 'di', noFilm = master || !di && f.noFilm;
   if (di && f.noFilm) throw new Error('Enable film simulation before exporting a Digital Intermediate.');
   if (noFilm) {
     if (f.pair || isPairPath(f.path) || f.params.filmEdge.pair)
@@ -233,8 +240,8 @@ function recipeView(r: ExportRecipe, f: FrameToExport, control: ExportControl) {
   }
   return {
     ...(noFilm ? { no_film: true } : {}),
-    geometry: di ? f.filmGeometry : f.geometry,
-    source_geometry: di ? f.filmSourceGeometry : f.sourceGeometry ?? GEOMETRY_DEFAULT,
+    geometry: master ? GEOMETRY_DEFAULT : di ? f.filmGeometry : f.geometry,
+    source_geometry: master ? GEOMETRY_DEFAULT : di ? f.filmSourceGeometry : f.sourceGeometry ?? GEOMETRY_DEFAULT,
     scene_placement: noFilm ? undefined : f.scenePlacement,
     scene_placement_side: noFilm ? undefined : f.scenePlacementSide,
   };
@@ -251,7 +258,22 @@ export async function exportFrame(
   const cancelled = () => control.cancelled?.() ?? false;
   try {
     if (cancelled()) return { kind: 'cancelled' };
+    if (r.format === 'original') {
+      if (!methods?.includes('copy_original')) throw new Error(tz('Update the engine for original copy export.', '请更新引擎以导出原片副本。'));
+      if (f.pair || isPairPath(f.path)) throw new Error(tz('A pair is a recipe, not a single original file.', '拼接配方不是单张原片，不能作为原片复制。'));
+      const { dir, base } = await targetFor(r, f, catalog); await platform().ensureDir(dir);
+      const ext = baseName(f.path).split('.').at(-1) ?? 'raw';
+      const target = await resolveTarget(dir, base, ext, r.existing === 'overwrite' ? 'addSuffix' : r.existing,
+        async (path) => await platform().pathExists(path) || await platform().pathExists(`${path}.spektra-recipe.json`), joinPath);
+      if (cancelled()) return { kind: 'cancelled' }; if (!target) return { kind: 'skipped', path: joinPath(dir, `${base}.${ext}`) };
+      const job = { session: '', progressId: `copy-${Date.now()}-${++exportSerial}` }; control.active?.(job);
+      const result = await host().transport.request('copy_original', { source_path: f.path, path: target.path, recipe: f.recipe ?? { schemaVersion: 3, decode: f.decode, params: f.params, adjustments: f.adjustments, geometry: f.geometry, noFilm: f.noFilm }, overwrite: false, progress_id: job.progressId }, { timeoutMs: 1_800_000 });
+      const copied = result.result;
+      if (typeof copied.path !== 'string' || typeof copied.width !== 'number' || typeof copied.height !== 'number') throw new Error('Invalid original copy response');
+      return { kind: 'written', path: copied.path, width: copied.width, height: copied.height, carriesEdits: false };
+    }
     const view = recipeView(r, f, control);
+    if (['png16', 'webp-lossless'].includes(hostFormat(r)) && !control.exportFormats?.includes(hostFormat(r))) throw new Error(tz('Update the engine for this export format.', '请更新引擎以使用此导出格式。'));
     if (f.pair && !methods?.includes('open_pair')) throw new Error(tz('This engine cannot export half-frame pairs. Update the engine.', '此引擎无法导出半格拼接，请更新引擎。'));
     if ((r.format === 'tiff' || r.format === 'di') &&
         ((r.tiffCompression === 'lzw' && !control.tiffOptions?.includes('lzw')) ||
@@ -274,19 +296,20 @@ export async function exportFrame(
     control.active?.(job);
     const res = await host().transport.request(r.format === 'di' ? 'export_cineon' : 'export_frame', {
       session: f.session, source_path: f.path, params, decode: decode ?? undefined,
-      adjustments: f.adjustments, ...view,
+      adjustments: r.format === 'raw-master' ? ADJUSTMENTS_DEFAULT : f.adjustments, ...view,
+      ...(r.format === 'raw-master' || r.format === 'di' ? {} : filmStrengthWire({ ...f, filmStrength: f.filmStrength ?? 1 })),
       pair: f.pair,
       path: target.path, format: hostFormat(r), quality: r.format === 'jpeg' ? r.quality : undefined,
       tiff_compression: r.format === 'tiff' || r.format === 'di' ? r.tiffCompression ?? 'none' : undefined,
       embed_preview: r.format === 'tiff' ? r.embedsPreview ?? false : undefined,
-      color_space: r.colorSpace, long_edge: r.format === 'di' ? 0 : r.longEdge, overwrite: target.overwrite, progress_id: job.progressId,
+      color_space: r.colorSpace, long_edge: r.format === 'di' || r.format === 'raw-master' ? 0 : r.longEdge, overwrite: target.overwrite, progress_id: job.progressId,
     }, { timeoutMs: 1_800_000 });
     if (res.payload.byteLength) throw new Error(tz('export_frame unexpectedly returned image data.', 'export_frame 意外返回了图像数据。'));
     const { path, width, height, timings_ms } = res.result;
     if (typeof path !== 'string' || typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0)
       throw new Error(tz('The engine returned invalid export dimensions.', '引擎返回的导出尺寸无效。'));
     platform().log('info', `export (${hostFormat(r)}, ${width}x${height}) host ms: ${JSON.stringify(timings_ms ?? {})} · TOTAL ${Math.round(performance.now() - started)}`);
-    return { kind: 'written', path, width, height, carriesEdits: r.format !== 'di' };
+    return { kind: 'written', path, width, height, carriesEdits: r.format !== 'di' && r.format !== 'raw-master' };
   } catch (e) {
     if (cancelled() && (e as { code?: string }).code === 'cancelled') return { kind: 'cancelled' };
     return { kind: 'failed', message: e instanceof Error ? e.message : String(e) };
@@ -312,9 +335,10 @@ export async function renderProof(
     const proof = await host().renderProof({
       session: f.session, source_path: f.path, params: fullDelta(f.params, f.gate, catalog),
       decode: decodeWire(f.decode, isRawPath(f.path)) ?? undefined,
-      adjustments: f.adjustments, ...view, format: r.format === 'di' ? 'di' : hostFormat(r),
+      adjustments: r.format === 'raw-master' || r.format === 'original' ? ADJUSTMENTS_DEFAULT : f.adjustments, ...view, format: r.format === 'di' ? 'di' : hostFormat(r),
+      ...(r.format === 'raw-master' || r.format === 'original' || r.format === 'di' ? {} : filmStrengthWire({ ...f, filmStrength: f.filmStrength ?? 1 })),
       pair: f.pair,
-      color_space: r.colorSpace, long_edge: r.format === 'di' ? 0 : r.longEdge,
+      color_space: r.colorSpace, long_edge: r.format === 'di' || r.format === 'raw-master' || r.format === 'original' ? 0 : r.longEdge,
       display, proof_long_edge: Math.max(1, Math.min(4096, Math.ceil(edge))), generation, progress_id: job.progressId,
     });
     return control.cancelled?.() ? null : proof;

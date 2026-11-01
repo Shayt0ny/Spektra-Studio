@@ -86,6 +86,7 @@ struct DecodeOptions {
     spk::Json lens_profile;
     bool apply_camera_curve = false;
     spk::Json camera_profile;
+    spk::Json raw_tone;
 };
 // Thrown as a plain error string prefixed "unsupported:" when a decode option
 // cannot be honoured for this file.

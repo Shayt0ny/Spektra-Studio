@@ -88,5 +88,10 @@
     "file": "proxy-libintl-33934de09af6a6627eb44e310a8079df009abdbb.tar",
     "sha256": "e73673095ba3dcac7fb78f76a2039a860ac763101a619481047c0e710db460b3",
     "bytes": 51200
+  },
+  {
+    "file": "libwebp-1.6.0.tar.gz",
+    "sha256": "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564",
+    "bytes": 4296070
   }
 ]

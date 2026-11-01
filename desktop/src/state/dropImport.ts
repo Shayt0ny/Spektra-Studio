@@ -2,6 +2,7 @@
 // No editor/library state changes until the dialog calls openPaths explicitly.
 import { createStore } from 'zustand/vanilla';
 import { dirName, platform, type FileEntry } from '../platform';
+import { lighttableStore } from '../lighttable/review';
 
 interface DropImportState {
   requestId: number;
@@ -24,7 +25,7 @@ export function closeDropImport() {
 }
 
 export async function requestDropImport(paths: string[]) {
-  if (!paths.length) return;
+  if (!paths.length || lighttableStore.getState().open) return;
   const gen = ++generation;
   dropImportStore.setState({ ...empty, requestId: gen, open: true, busy: true });
   try {

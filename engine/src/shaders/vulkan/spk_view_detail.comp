@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x=256) in;
+layout(binding=0,std430) readonly buffer Input {float v[];} src;
+layout(binding=1,std430) readonly buffer Config {float v[];} cfg;
+layout(binding=2,std430) readonly buffer Meta {uint v[];} m;
+layout(binding=3,std430) writeonly buffer Output {float v[];} dst;
+vec3 rgb(uint x,uint y){uint i=3u*(y*m.v[1]+x);return vec3(src.v[i],src.v[i+1u],src.v[i+2u]);}
+vec3 sample_image(vec2 xy){xy=clamp(xy,vec2(0),vec2(m.v[1]-1u,m.v[2]-1u));uvec2 a=uvec2(floor(xy)),b=min(a+uvec2(1),uvec2(m.v[1]-1u,m.v[2]-1u));vec2 f=fract(xy);return mix(mix(rgb(a.x,a.y),rgb(b.x,a.y),f.x),mix(rgb(a.x,b.y),rgb(b.x,b.y),f.x),f.y);}
+vec3 hsl(vec3 c){
+ float hi=max(c.r,max(c.g,c.b)),lo=min(c.r,min(c.g,c.b)),d=hi-lo;if(d<1e-6)return c;
+ float h=mod((hi==c.r?(c.g-c.b)/d:hi==c.g?(c.b-c.r)/d+2.0:(c.r-c.g)/d+4.0)*60.0+360.0,360.0),l=(hi+lo)*.5,s=d/max(1e-6,1.0-abs(2.0*l-1.0));
+ const float centers[8]=float[8](0,30,60,120,180,240,270,300);vec3 delta=vec3(0);float total=0;
+ for(uint k=0u;k<8u;k++){float distance=mod(h-centers[k]+540.0,360.0)-180.0,span=distance<0.0?mod(centers[k]-centers[(k+7u)%8u]+360.0,360.0):mod(centers[(k+1u)%8u]-centers[k]+360.0,360.0),w=max(0.0,1.0-abs(distance)/span);total+=w;delta+=w*vec3(cfg.v[3u*k],cfg.v[3u*k+1u],cfg.v[3u*k+2u]);}
+ delta*=clamp(s/.15,0.0,1.0)/max(total,1e-6);h=mod(h+delta.x+360.0,360.0);s=clamp(s*(1.0+delta.y),0.0,1.0);l=clamp(l+.25*delta.z,0.0,1.0);
+ float cc=(1.0-abs(2.0*l-1.0))*s,x=cc*(1.0-abs(mod(h/60.0,2.0)-1.0));vec3 v=h<60.0?vec3(cc,x,0):h<120.0?vec3(x,cc,0):h<180.0?vec3(0,cc,x):h<240.0?vec3(0,x,cc):h<300.0?vec3(x,0,cc):vec3(cc,0,x);return v+vec3(l-cc*.5);
+}
+void main(){uint i=gl_GlobalInvocationID.y*(gl_NumWorkGroups.x*gl_WorkGroupSize.x)+gl_GlobalInvocationID.x;if(i>=m.v[0])return;
+ vec2 xy=vec2(i%m.v[1],i/m.v[1]);vec3 c=rgb(uint(xy.x),uint(xy.y)),detail=vec3(0);float scale=float(max(m.v[1],m.v[2]))/2048.0,l=dot(c,vec3(.2126,.7152,.0722));
+ for(uint k=0u;k<2u;k++){float amount=cfg.v[24u+k];if(amount==0.0)continue;float r=(k==0u?1.5:12.0)*scale;vec3 sum=vec3(0);for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)if(x!=0||y!=0)sum+=sample_image(xy+vec2(x,y)*r);
+ detail+=amount*(k==0u?.6:.4)*(c-sum/8.0)*(k==0u?1.0:4.0*l*(1.0-l));}
+ c=hsl(clamp(c+detail,0.0,1.0));c=floor(clamp(c,0.0,1.0)*65535.0+.5)/65535.0;
+ dst.v[3u*i]=c.r;dst.v[3u*i+1u]=c.g;dst.v[3u*i+2u]=c.b;
+}

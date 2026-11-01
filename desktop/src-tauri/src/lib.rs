@@ -207,6 +207,11 @@ async fn frame_cache_clear(state: State<'_, AppState>) -> Result<(),String> {
     let cache=Arc::clone(&state.frames);
     tauri::async_runtime::spawn_blocking(move || cache.clear()).await.map_err(|e|e.to_string())?
 }
+#[tauri::command]
+async fn frame_cache_relocate(state: State<'_,AppState>,parent:Option<String>)->Result<(),String>{
+    let cache=Arc::clone(&state.frames);
+    tauri::async_runtime::spawn_blocking(move||cache.relocate(parent.as_deref().map(std::path::Path::new))).await.map_err(|e|e.to_string())?
+}
 
 /// Small JSON documents the app keeps beside its sidecars (export recipes, a
 /// folder's order). `name` is a bare file name inside `<app data>/<area>/`.
@@ -366,6 +371,7 @@ pub fn run() {
             frame_cache_status,
             frame_cache_configure,
             frame_cache_clear,
+            frame_cache_relocate,
             workspace_begin,
             workspace_end,
             agent_changes,

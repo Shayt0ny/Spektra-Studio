@@ -13,16 +13,24 @@ import { AboutDialog, HostFailure, SettingsDialog } from './Dialogs';
 import { DropImportDialog } from './DropImportDialog';
 import { ExportPage } from '../export/ExportPage';
 import { PanelResize } from '../controls/PanelResize';
+import { lazy, Suspense } from 'react';
+import { useLighttable } from '../lighttable/review';
+import { tz } from '../i18n';
+
+// Loading the editor does not initialize the review image pool or viewer UI.
+const Lighttable = lazy(() => import('../lighttable/Lighttable').then((module) => ({ default: module.Lighttable })));
 
 export function EditorWindow() {
   const left = useSettings((s) => s.leftCollapsed);
   const right = useSettings((s) => s.rightCollapsed);
   const strip = useSettings((s) => s.filmstripCollapsed);
   const batch = useSession((s) => s.batchExporting);
+  const reviewing = useLighttable((s) => s.open);
   return (
     <>
       <div
         className="editor"
+        inert={reviewing}
         style={{ ['--left-col' as string]: left ? '0px' : 'var(--left-width)', ['--right-col' as string]: right ? '0px' : 'var(--right-width)', pointerEvents: batch ? 'none' : undefined }}
         data-testid="editor"
       >
@@ -42,6 +50,7 @@ export function EditorWindow() {
       <AboutDialog />
       <ExportPage />
       <DropImportDialog />
+      {reviewing && <Suspense fallback={<div className="dialog-overlay" role="status">{tz('Opening lighttable…', '正在打开观片台…')}</div>}><Lighttable /></Suspense>}
     </>
   );
 }

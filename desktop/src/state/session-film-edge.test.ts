@@ -29,13 +29,22 @@ beforeEach(async () => {
   session = await import('./session');
   session.sessionStore.setState({ selection: '/owned/a.ARW', picked: ['/owned/a.ARW'], engineSession: 's1', hello,
     hostState: { phase: 'ready', hello }, nativeSize: { width: 6000, height: 4000 }, frameKind: 'raw',
-    catalog: new StockCatalog(stockData.stocks), sidecar: { ...structuredClone(newSidecar()), geometry: crop },
+    catalog: new StockCatalog(stockData.stocks), sidecar: { ...structuredClone(newSidecar()), params:{...structuredClone(newSidecar().params),filmEdge:{...newSidecar().params.filmEdge,followCrop:false}},geometry: crop },
     metadata: { datetime_original: '2026-10-01T00:00:00', aperture: 2.8 } });
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 const settle = () => vi.advanceTimersByTimeAsync(1);
 
 describe('film edge and date back session', () => {
+  it('keeps a square crop when adding a 135 border and keeps subsequent edits when removing it',async()=>{
+    const g={...GEOMETRY_DEFAULT,aspect:'square' as const,crop:{x:.2,y:.15,width:.4,height:.6}};
+    session.sessionStore.setState({sidecar:{...state().sidecar,geometry:g,params:{...state().sidecar.params,filmEdge:{...state().sidecar.params.filmEdge,followCrop:true}}}});
+    session.setParams(p=>({...p,filmEdge:{...p.filmEdge,active:true}}));await settle();
+    expect(state().sidecar.geometry).toEqual(g);expect(fake.params).toHaveBeenCalledWith('s1',expect.objectContaining({overscan_follow_crop:true}));
+    session.setGeometry(q=>({...q,crop:{...q.crop,x:.22}}));await settle();
+    session.setParams(p=>({...p,filmEdge:{...p.filmEdge,active:false}}));await settle();
+    expect(state().sidecar.geometry.crop.x).toBe(.22);expect(state().sidecar.geometry.aspect).toBe('square');
+  });
   it('retains the user film format while the edge owns it, including rejected edits and undo', async () => {
     session.setFilmFrame(FILM_FRAME_CUSTOM.id);
     session.setFilmSide('long');
@@ -112,7 +121,7 @@ describe('film edge and date back session', () => {
   });
   it('seeds each newly opened frame once, persists it, repairs restored framing and resolves ISO dates', async () => {
     const saved = { ...newSidecar(), geometry: crop, params: { ...newSidecar().params,
-      filmEdge: { ...newSidecar().params.filmEdge, active: true }, dateBack: { ...newSidecar().params.dateBack, active: true } } };
+      filmEdge: { ...newSidecar().params.filmEdge, active: true, followCrop:false }, dateBack: { ...newSidecar().params.dateBack, active: true } } };
     fake.load.mockResolvedValue(encodeSidecar(saved));
     await session.select('/owned/b.ARW');
     expect(state().sidecar.params.filmEdge).toMatchObject({ seeded: true, frameSeed: expect.any(Number), cameraSeed: expect.any(Number) });

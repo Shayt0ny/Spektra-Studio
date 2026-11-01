@@ -21,6 +21,18 @@ def png(path, pixels):
 
 def exercise(host, folder):
     pixels = [[(40+x, 30+y, 20+(x+y)//2) for x in range(192)] for y in range(128)]
+    # A square crop must become the image gate, never silently recropped to 3:2.
+    square_source=folder/'square-source.png';square_physical=folder/'square-physical.png'
+    png(square_source,pixels);png(square_physical,[row[48:144] for row in pixels[16:112]])
+    opts={'auto_exposure':False,'grain_active':False,'glare_active':False,'halation_active':False,
+          'overscan_active':True,'overscan_follow_crop':True,'overscan_format':'135','overscan_frame_seed':1234,'overscan_camera_seed':17}
+    opened,_=good(host,'open',{'path':str(square_source),'params':opts});square_sid=opened['session']
+    first,cut=good(host,'render_view',{'session':square_sid,'tier':'full','display':'srgb','source_geometry':{'crop':{'x':.25,'y':.125,'width':.5,'height':.75}}})
+    physically,_=good(host,'open',{'path':str(square_physical),'params':opts})
+    second,reference=good(host,'render_view',{'session':physically['session'],'tier':'full','display':'srgb'})
+    assert (first['image']['width'],first['image']['height'])==(second['image']['width'],second['image']['height'])
+    assert cut==reference,'square crop + border differs from physically cropped input'
+    good(host,'close',{'session':square_sid});good(host,'close',{'session':physically['session']})
     original = folder / 'source.png'
     png(original, pixels)
     crop = [row[48:144] for row in pixels[32:96]]

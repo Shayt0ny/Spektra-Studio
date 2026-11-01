@@ -183,6 +183,7 @@ struct PrintCurvesMorphParams {
 // per stock and format and needs no seed.
 struct OverscanParams {
     bool active = false;
+    bool follow_crop = false;       // desktop custom gate around the chosen crop
     std::string format = "135";      // 135 | 135_half | 120_645 | 120_6x6 | 120_6x7 | 120_6x8 | 120_6x9
     std::string mode = "strip";      // strip (the whole film width) | filed (a sliver of rebate)
     int camera_seed = 1;
@@ -348,6 +349,8 @@ struct EnlargerParams {
     // what its ends mean here; the wire's own range stays the oracle's.
     double filter_shift_scale = 1.0;
     double y_filter_neutral = 55.0, m_filter_neutral = 65.0, c_filter_neutral = 0.0;
+    // Optional enlarger defocus: Gaussian sigma in full-output pixels,
+    // scaled for live tiers, applied in linear paper exposure before development.
     double lens_blur = 0.0;
     DiffusionFilterParams diffusion_filter;
     double preflash_exposure = 0.0;
@@ -357,8 +360,7 @@ struct EnlargerParams {
 struct ScannerParams {
     /// **Pixels**, and it stays that way here: `scanner_lens_blur` is on the
     /// wire (range 0…20, print layer), so its unit is the contract's to
-    /// change, not this file's. The app never sends it, so nothing in the
-    /// product moves either way. See the note on the pixel-unit item.
+    /// change, not this file's. Windows exposes it under Print Effects.
     double lens_blur = 0.0;
     bool white_correction = false, black_correction = false;
     double white_level = 0.98, black_level = 0.01;

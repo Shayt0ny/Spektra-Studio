@@ -44,6 +44,7 @@ export function geometryInNegative(p: FilmParams, gate?: FeatureGate, noFilm = f
   return !noFilm && (edgeEffective(p.filmEdge, gate) || dateEffective(p.dateBack, p.filmEdge, gate));
 }
 export function gateFramed(g: Geometry, edge: FilmEdgeSettings, size: Size, landscape?: boolean): Geometry {
+  if(edge.followCrop&&!edge.pair)return g;
   const f = edgeFormat(edge.format);
   if (!f || !(size.width > 0 && size.height > 0)) return g;
   const along = edge.pair ? 37 : f.long, across = edge.pair ? 24 : f.short;

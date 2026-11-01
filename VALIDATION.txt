@@ -1,0 +1,23 @@
+Spektra Studio 1.0.4-win.1 · validation
+536 frontend unit tests passed; 1 optional native-host unit fixture skipped.
+53 native CTest gates passed. 30 release Rust tests passed; 1 intentional fixture ignored.
+32 distinct browser tests passed across focused and regression groups (repeated gates not double counted).
+The native lighttable/browser gate was rerun with staged Vulkan host after its optional skip, and passed.
+RAW page: manual WB, source-before-crop surfaces, independent curves/colour/HSL,
+colour-preserving auto tone, persistent undo, Chinese 130% compact rail passed.
+Film pan: 41 draws, 123 uniform calls, 0 uploads, 0 readbacks, 0 host requests.
+RAW pan: 40 draws, 0 uploads, 0 readbacks, 0 host requests.
+These are local browser/ANGLE operation counts, not GPU timing benchmarks.
+Spatial effects: previous binary default hashes exact with grain on/off; every control
+changes live-preview and full-resolution pixels and restores exactly. Grain-off/direct-scan/DI bypasses passed.
+Enlarger blur striped/whole-frame 16-bit error: 0 codes at radii 1.3 and 4.
+TIFF16/proof exact pixels; all source fixtures unchanged.
+RAW colours tested red on previous host, green on new host: source/film changes,
+private proof/export and 16-bit output; exact restore and original SHA unchanged.
+Nikon Z50 II auto/candidate and Panasonic DC-ZS300 edit/WB/RAW tone/auto,
+crop/turn, TIFF8/16 proof and restore passed; original SHA256 unchanged.
+PNG16/WebP/copy/recipes and 0/20/100 percent film strength passed.
+AMD/Radeon RGBA8 and NVIDIA/Intel RGBA16 policies tested, including source previews.
+No direct AMD hardware re-test, cloud account test, or new interactive native-window inspection claimed.
+Spektrafilm, SpektraLab and Photo-All attribution/licences included.
+Full final-look sRGB LUT and automatic subject/sky selection are not shipped.

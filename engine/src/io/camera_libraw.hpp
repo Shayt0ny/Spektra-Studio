@@ -1,4 +1,4 @@
-// Windows missing-camera compatibility adapter (camera data retains separate notices), Copyright (C) 2026 shayt0ny. Modified 2026-10-31.
+// Windows missing-camera compatibility adapter (camera data retains separate notices), Copyright (C) 2026 shayt0ny. Modified 2026-11-01.
 #pragma once
 
 #include "raw_camera.hpp"
@@ -25,7 +25,9 @@ public:
         if (id.maker_index != LIBRAW_CAMERAMAKER_Nikon || id.colors != 3) return false;
         const bool z5ii = std::strcmp(id.normalized_model, "Z5_2") == 0;
         const bool zr = std::strcmp(id.normalized_model, "ZR") == 0;
-        if (!z5ii && !zr) return false;
+        const bool z50ii = std::strcmp(id.normalized_model, "Z50_2") == 0;
+        if (!z5ii && !zr && !z50ii) return false;
+        if (z50ii && id.dng_version) return false;
         // Future LibRaw and file-supplied profiles take precedence. Never
         // replace a non-empty matrix with our compatibility entry.
         for (const auto& row : imgdata.color.cam_xyz)
@@ -34,6 +36,11 @@ public:
             if (imgdata.color.cmatrix[r][c] != 0 ||
                 imgdata.color.rgb_cam[r][c] != float(r == c)) return false;
         }
+        // RawSpeed's exact Z50_2 entry matches LibRaw's existing Z 50
+        // calibration (11640,-4829,-1079 / -5107,13006,2325 / -972,1711,7380).
+        // Reuse only that lookup, after the same missing-profile guard. The
+        // candidate decoder still owns compression; do not ignore corrupt data.
+        if (z50ii) return adobe_coeff(LIBRAW_CAMERAMAKER_Nikon, "Z 50", 0) != 0;
         // Exact Nikon Z5 II / ZR D65 XYZ->camera matrices.
         // RawSpeed cameras.xml, CC BY-SA 3.0; attribution and pinned source:
         // engine/resources/io/Nikon-{Z5-II,ZR}-profile-NOTICE.txt.

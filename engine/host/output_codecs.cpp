@@ -11,6 +11,7 @@
 #include <jpeglib.h>
 #include <jerror.h>
 #include <png.h>
+#include <webp/encode.h>
 #include "stb_image_write.h"
 
 namespace spkhost {
@@ -27,6 +28,64 @@ struct Sink {
         } catch (...) { return false; }
     }
 };
+
+// Stream the VP8L chunks into an extended RIFF container. ICC/EXIF do not
+// require a second full compressed-image copy or an external mux process.
+struct WebpSink {
+    Sink sink;
+    uint64_t written = 0;
+    size_t skipped = 0;
+    uint8_t header[12]{};
+    bool write(const void* data, size_t size) noexcept {
+        if (written + size > uint64_t(UINT32_MAX) + 8 || !sink.write(data, size)) return false;
+        written += size; return true;
+    }
+    bool u32(uint32_t value) noexcept {
+        const uint8_t bytes[]{uint8_t(value), uint8_t(value >> 8), uint8_t(value >> 16), uint8_t(value >> 24)};
+        return write(bytes, 4);
+    }
+    bool chunk(const char* name, const std::vector<uint8_t>& data) noexcept {
+        const uint8_t zero = 0;
+        return data.size() <= UINT32_MAX && write(name, 4) && u32(uint32_t(data.size())) &&
+            write(data.data(), data.size()) && (!(data.size() & 1) || write(&zero, 1));
+    }
+};
+int webp_write(const uint8_t* data, size_t size, const WebPPicture* picture) {
+    auto* state = static_cast<WebpSink*>(picture->custom_ptr);
+    const size_t skip = std::min(size, 12 - state->skipped);
+    if (skip) { std::memcpy(state->header + state->skipped, data, skip); state->skipped += skip; }
+    return state->write(data + skip, size - skip) ? 1 : 0;
+}
+bool webp_to(Sink sink, const uint8_t* rgb, uint32_t w, uint32_t h, const std::vector<uint8_t>& icc,
+             std::string& error, const Exif* exif) {
+    if (!rgb || !w || !h || w > WEBP_MAX_DIMENSION || h > WEBP_MAX_DIMENSION || icc.size() > UINT32_MAX) {
+        error = "WebP requires dimensions between 1 and 16383 pixels"; return false;
+    }
+    const auto block = exif ? exif_block(*exif, w, h) : std::vector<uint8_t>{};
+    WebpSink state{sink};
+    std::vector<uint8_t> extended(10, 0); extended[0] = uint8_t((icc.empty() ? 0 : 0x20) | (block.empty() ? 0 : 0x08));
+    for (int i = 0; i < 3; ++i) { extended[4 + i] = uint8_t((w - 1) >> (8 * i)); extended[7 + i] = uint8_t((h - 1) >> (8 * i)); }
+    if (!state.write("RIFF", 4) || !state.u32(0) || !state.write("WEBP", 4) || !state.chunk("VP8X", extended) ||
+        (!icc.empty() && !state.chunk("ICCP", icc))) { error = "WebP header write failed"; return false; }
+    WebPConfig config; WebPPicture picture;
+    if (!WebPConfigInit(&config) || !WebPConfigLosslessPreset(&config, 3) || !WebPPictureInit(&picture)) {
+        error = "WebP encoder version mismatch"; return false;
+    }
+    config.thread_level = 0; config.exact = 1;
+    picture.width = int(w); picture.height = int(h); picture.use_argb = 1; picture.writer = webp_write; picture.custom_ptr = &state;
+    const bool ok = WebPPictureImportRGB(&picture, rgb, int(w * 3)) && WebPEncode(&config, &picture);
+    const auto code = picture.error_code; WebPPictureFree(&picture);
+    if (!ok || state.skipped != 12 || std::memcmp(state.header, "RIFF", 4) || std::memcmp(state.header + 8, "WEBP", 4)) {
+        error = "WebP lossless encoding failed: " + std::to_string(int(code)); return false;
+    }
+    if (!block.empty() && !state.chunk("EXIF", block)) { error = "WebP EXIF write failed"; return false; }
+    const uint32_t length = uint32_t(state.written - 8);
+    const uint8_t bytes[]{uint8_t(length), uint8_t(length >> 8), uint8_t(length >> 16), uint8_t(length >> 24)};
+    if (sink.file) {
+        if (std::fseek(sink.file, 4, SEEK_SET) || std::fwrite(bytes, 1, 4, sink.file) != 4 || std::fseek(sink.file, 0, SEEK_END)) { error = "WebP RIFF finalization failed"; return false; }
+    } else std::copy(bytes, bytes + 4, sink.bytes->begin() + 4);
+    return true;
+}
 
 // At Q96--100 the old float RGB->YCbCr path preserves fraction bits which
 // the native 8-bit JPEG path rounds before its DCT. The measured Q98/Q100
@@ -89,8 +148,8 @@ void png_write(png_structp png, png_bytep p, png_size_t n) {
 }
 void png_flush(png_structp) {}
 
-bool png_to(Sink sink, const uint8_t* rgb, uint32_t w, uint32_t h,
-            const std::vector<uint8_t>& icc, std::string& error, const Exif* exif) {
+bool png_to(Sink sink, const void* rgb, uint32_t w, uint32_t h,
+            const std::vector<uint8_t>& icc, std::string& error, const Exif* exif, uint32_t bits = 8) {
     if (!rgb || !w || !h || w > PNG_UINT_31_MAX || h > PNG_UINT_31_MAX ||
         uint64_t(w) * h * 3 > std::numeric_limits<size_t>::max() || icc.size() > PNG_UINT_31_MAX) {
         error = "invalid PNG image dimensions or profile"; return false;
@@ -98,6 +157,7 @@ bool png_to(Sink sink, const uint8_t* rgb, uint32_t w, uint32_t h,
     // C libraries report errors with longjmp. All C++ owned objects are made
     // before setjmp; callbacks cannot throw through the C codec.
     const auto block = exif ? exif_block(*exif, w, h) : std::vector<uint8_t>{};
+    std::vector<uint8_t> row(bits == 16 ? size_t(w) * 6 : 0);
     auto state = std::make_unique<PngState>();
     state->sink = sink;
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, state.get(), png_failure, png_warning_ignored);
@@ -110,15 +170,20 @@ bool png_to(Sink sink, const uint8_t* rgb, uint32_t w, uint32_t h,
         return false;
     }
     png_set_write_fn(png, state.get(), png_write, png_flush);
-    png_set_IHDR(png, info, w, h, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+    png_set_IHDR(png, info, w, h, bits, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
                  PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
     png_set_compression_level(png, 3); // lossless, favour interactive export speed
     if (!icc.empty()) png_set_iCCP(png, info, "ICC Profile", PNG_COMPRESSION_TYPE_BASE,
                                    icc.data(), png_uint_32(icc.size()));
     if (!block.empty()) png_set_eXIf_1(png, info, png_uint_32(block.size()), const_cast<png_bytep>(block.data()));
     png_write_info(png, info);
-    for (uint32_t y = 0; y < h; ++y)
-        png_write_row(png, const_cast<png_bytep>(rgb + size_t(y) * w * 3));
+    for (uint32_t y = 0; y < h; ++y) {
+        if (bits == 16) {
+            const auto* source = static_cast<const uint16_t*>(rgb) + size_t(y) * w * 3;
+            for (size_t i = 0; i < size_t(w) * 3; ++i) { row[2 * i] = uint8_t(source[i] >> 8); row[2 * i + 1] = uint8_t(source[i]); }
+            png_write_row(png, row.data());
+        } else png_write_row(png, const_cast<png_bytep>(static_cast<const uint8_t*>(rgb) + size_t(y) * w * 3));
+    }
     png_write_end(png, info);
     png_destroy_write_struct(&png, &info);
     return true;
@@ -196,9 +261,22 @@ bool jpeg_to(Sink sink, const uint8_t* rgb, uint32_t w, uint32_t h, int quality,
 }
 } // namespace
 
+bool encode_webp_lossless(const uint8_t* rgb, uint32_t w, uint32_t h, const std::vector<uint8_t>& icc,
+                          std::vector<uint8_t>& out, std::string& error, const Exif* exif) {
+    out.clear(); return webp_to({nullptr, &out}, rgb, w, h, icc, error, exif);
+}
+bool encode_webp_lossless_file(std::FILE* f, const uint8_t* rgb, uint32_t w, uint32_t h,
+                               const std::vector<uint8_t>& icc, std::string& error, const Exif* exif) {
+    if (!f) { error = "WebP output file is null"; return false; }
+    return webp_to({f, nullptr}, rgb, w, h, icc, error, exif);
+}
 bool encode_png8(const uint8_t* rgb, uint32_t w, uint32_t h, const std::vector<uint8_t>& icc,
                  std::vector<uint8_t>& out, std::string& error, const Exif* exif) {
     out.clear(); return png_to({nullptr, &out}, rgb, w, h, icc, error, exif);
+}
+bool encode_png16(const uint16_t* rgb, uint32_t w, uint32_t h, const std::vector<uint8_t>& icc,
+                  std::vector<uint8_t>& out, std::string& error, const Exif* exif) {
+    out.clear(); return png_to({nullptr, &out}, rgb, w, h, icc, error, exif, 16);
 }
 bool encode_jpeg(const uint8_t* rgb, uint32_t w, uint32_t h, int quality, const std::vector<uint8_t>& icc,
                  std::vector<uint8_t>& out, std::string& error, const Exif* exif) {
@@ -208,6 +286,11 @@ bool encode_png8_file(std::FILE* f, const uint8_t* rgb, uint32_t w, uint32_t h,
                       const std::vector<uint8_t>& icc, std::string& error, const Exif* exif) {
     if (!f) { error = "PNG output file is null"; return false; }
     return png_to({f, nullptr}, rgb, w, h, icc, error, exif);
+}
+bool encode_png16_file(std::FILE* f, const uint16_t* rgb, uint32_t w, uint32_t h,
+                       const std::vector<uint8_t>& icc, std::string& error, const Exif* exif) {
+    if (!f) { error = "PNG file is null"; return false; }
+    return png_to({f, nullptr}, rgb, w, h, icc, error, exif, 16);
 }
 bool encode_jpeg_file(std::FILE* f, const uint8_t* rgb, uint32_t w, uint32_t h, int quality,
                       const std::vector<uint8_t>& icc, std::string& error, const Exif* exif) {

@@ -1,0 +1,14 @@
+.lt-library { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--field); min-height: 0; }
+.lt-library-bar, .lt-library-search, .lt-library-tag-editor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--rule); }
+.lt-library input, .lt-library select { background: var(--well); color: var(--text); border: 1px solid var(--control-border); border-radius: 4px; padding: 5px 8px; min-width: 0; max-width: 100%; font: inherit; }
+.lt-library-bar label { display: flex; align-items: center; gap: 6px; }.lt-library-bar input { width: 135px; }.lt-library-bar select { max-width: 230px; }
+.lt-library-search > input { flex: 1; min-width: 160px; }
+.lt-library-filters { flex: 0 0 auto; padding: 6px 16px; border-bottom: 1px solid var(--rule); max-height: 29vh; overflow: auto; }
+.lt-library-filters summary { cursor: pointer; padding: 3px 0 7px; color: var(--secondary-text); }
+.lt-library-filters > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 6px 10px; }
+.lt-library-filters label { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-small); }.lt-library-filters select { width: 100%; }
+.lt-library-note { padding: 5px 16px; color: var(--dim); font-size: var(--fs-small); flex: 0 0 auto; }
+.lt-library-grid { flex: 1; min-height: 80px; overflow: auto; padding: 12px 8px; }
+.lt-library-tag-editor > span { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.lt-library-tag-editor input { flex: 1; min-width: 140px; }
+.lt-library-trash { padding: 18px; flex: 1; overflow: auto; }.lt-library-trash > div { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+@media(max-height:740px) { .lt-library-bar,.lt-library-search,.lt-library-tag-editor { padding: 5px 10px; gap: 5px; }.lt-library .lt-button { min-height: 28px; padding: 3px 7px; }.lt-library-filters { max-height: 24vh; } }

@@ -5,7 +5,7 @@ import { inTauri } from '../host/transport';
 import { platform } from '../platform';
 import { tz } from '../i18n';
 import { ToggleRow } from '../controls/controls';
-import { clearDisplayCache, configureDisplayCache, displayCacheStatus, type DisplayCacheStatus } from '../state/displayCache';
+import { clearDisplayCache, configureDisplayCache, displayCacheStatus, relocateDisplayCache, type DisplayCacheStatus } from '../state/displayCache';
 import { checkWindowsUpdate, type UpdateStatus } from './updateCheck';
 import { AiAssistantSettings } from './AiAssistantSettings';
 
@@ -22,7 +22,7 @@ export function MemorySettings() {
   const [memory, setMemory] = useState<MemoryReport | null>(null);
   const [cache, setCache] = useState<DisplayCacheStatus | null>(null);
   const [cacheLoading, setCacheLoading] = useState(true);
-  const [limit, setLimit] = useState('16');
+  const [limit, setLimit] = useState('4');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // One sample at a time; unmount cancels the timer, not an engine job. A
@@ -59,6 +59,13 @@ export function MemorySettings() {
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   };
+  const changeLocation=async(reset=false)=>{
+    const parent=reset?null:await platform().pickFolder(tz('Choose a disk or folder for preview cache','选择预览缓存所在磁盘或文件夹'));
+    if(!reset&&!parent)return;
+    setBusy(true);setError('');
+    try{await relocateDisplayCache(parent);setCache(await displayCacheStatus());}
+    catch(e){setError(String(e));}finally{setBusy(false);}
+  };
   return <>
     <div className="settings-group">
       <h3>{tz('Engine allocations', '引擎分配')}</h3>
@@ -75,6 +82,7 @@ export function MemorySettings() {
     </div>
     <div className="settings-group">
       <h3>{tz('Display cache on disk', '显示磁盘缓存')}</h3>
+      <p className="caption">{tz('Default: 4 GiB. Dragging adjustments stays in memory; stable previews keep at most two recent versions per photo.','默认上限 4 GiB；拖动调整的中间预览只留在内存，同一照片的稳定效果预览最多保留两个版本。')}</p>
       <p className="caption">{tz('Recent previews also use up to 128 MiB of memory. Clear removes both memory and disk previews.', '近期预览另外使用最多 128 MiB 内存；清空会同时清除内存与磁盘预览。')}</p>
       {cache ? <>
         <p className="caption">{formatBytes(cache.bytes)} / {formatBytes(cache.cap_bytes)} · {cache.entries} {tz('pictures', '张图片')}</p>
@@ -92,6 +100,10 @@ export function MemorySettings() {
         ? tz('Available in the desktop application.', '此功能在桌面应用中可用。')
         : cacheLoading ? tz('Loading display cache…', '正在加载显示缓存…')
           : tz('Display cache is unavailable.', '显示缓存不可用。')}</p>}
+      {inTauri()&&<><div className="cache-location-actions">
+        <button className="btn" disabled={busy} onClick={()=>void changeLocation()}>{tz('Choose cache folder…','选择缓存位置…')}</button>
+        <button className="btn" disabled={busy} onClick={()=>void changeLocation(true)}>{tz('Use default location','恢复默认位置')}</button>
+      </div><p className="caption">{tz('A dedicated Spektra-Studio-Cache folder is created there. Old preview files are cleared and rebuilt; photographs and edits stay where they are.','会在所选位置创建专用 Spektra-Studio-Cache 文件夹。旧预览会清理并按需重建，原片和调色记录保留原位置。')}</p></>}
     </div>
     {error && <p className="caption" role="alert">{error}</p>}
   </>;

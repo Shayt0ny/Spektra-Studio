@@ -30,6 +30,7 @@ struct Request {
     // Per-request source choice, not an engine parameter. Cineon rejects it.
     // The resident decode is graded/cropped normally; film caches stay intact.
     bool no_film = false;
+    double film_strength = 1.0; // view blend, never a measured material parameter
 };
 struct Result {
     uint32_t width = 0, height = 0, source_width = 0, source_height = 0;

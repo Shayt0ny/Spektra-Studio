@@ -23,6 +23,7 @@ import type { Adjustments } from '@shared/adjustments';
 import type { Geometry } from '@shared/geometry';
 import type { HalfFramePair } from '@shared/pair';
 import type { CameraProfile } from '@shared/rawDevelopment';
+import { previewFormat } from './previewFormat';
 
 export { HostCallError };
 
@@ -132,7 +133,7 @@ export class Host {
   async renderSource(session: string, opts: { long_edge: number; display: 'srgb' | 'display-p3'; generation: number }): Promise<RgbaImage> {
     const snapshot = structuredClone(opts);
     const state = await this.state();
-    const format = state.phase === 'ready' && state.hello.source_formats?.includes('rgba16') ? 'rgba16' : 'rgba8';
+    const format = previewFormat(state.phase === 'ready' ? state.hello : null, 'source');
     const bpp = format === 'rgba16' ? 8 : 4;
     const r = await this.call<{ image: ImageInfo; generation: number }>('render_source', { session, ...snapshot, format }, 180_000);
     const i = r.result.image;
@@ -174,18 +175,22 @@ export class Host {
     adjustments: Adjustments; geometry: Geometry; display: 'srgb' | 'display-p3'; generation: number; long_edge?: number;
     source_geometry?: Geometry;
     no_film?: boolean;
+    film_strength?: number;
   }): Promise<RenderReply> {
     const snapshot = structuredClone(opts);
     const state = await this.state();
     if (snapshot.no_film && !(state.phase === 'ready' && state.hello.view_options?.includes('no_film')))
       throw new HostCallError('render_view', 'unsupported', 'This engine does not support no_film viewing.');
-    const format = state.phase === 'ready' && state.hello.view_formats?.includes('rgba16') ? 'rgba16' : 'rgba8';
+    if (snapshot.film_strength !== undefined && !(state.phase === 'ready' && state.hello.view_options?.includes('film_strength')))
+      throw new HostCallError('render_view', 'unsupported', 'This engine does not support overall film strength.');
+    const format = previewFormat(state.phase === 'ready' ? state.hello : null, 'view');
     const t0 = performance.now();
     const r = await this.call<{ image: ImageInfo; tier: Tier; print_cached: boolean; generation: number; pair_info?: PairInfo }>(
       'render_view', { session, tier, ...snapshot, format }, tier === 'full' ? 900_000 : 180_000,
     );
     if (r.result.generation !== snapshot.generation) throw new HostCallError('render_view', 'internal', 'view generation mismatch');
       const image = r.result.image;
+      if (image?.format !== format) throw new HostCallError('render_view', 'internal', 'display response does not match the requested preview format');
       return { ...displayImage(image, r.payload), processedGeometry: snapshot.geometry,
         pairInfo: r.result.pair_info,
         nativeSize: image.source_width && image.source_height ? { width: image.source_width, height: image.source_height } : undefined,
@@ -207,7 +212,7 @@ export class Host {
   async exportImage(params: {
     session: string;
     path: string;
-    format: 'tiff16' | 'tiff8' | 'jpeg' | 'png';
+    format: 'tiff16' | 'tiff8' | 'jpeg' | 'png' | 'png16' | 'webp-lossless';
     quality?: number;
     color_space?: 'sRGB' | 'display-p3' | 'prophoto' | 'adobe-rgb' | 'rec2020';
     long_edge?: number;

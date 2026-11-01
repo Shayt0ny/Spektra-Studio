@@ -92,6 +92,7 @@ export function isRawPath(path: string): boolean {
 }
 
 export interface WireDecode {
+  raw_tone?: DecodeSettings['rawTone'];
   raw_decoder?: DecodeSettings['rawDecoder'];
   white_balance: { mode: 'as_shot' } | { mode: 'custom'; temperature_k: number; tint: number };
   lens_correction?: boolean;
@@ -103,7 +104,7 @@ export interface WireDecode {
 /** `open.decode` / `redecode.decode` for a RAW; null for anything else (the host refuses it there). */
 export function decodeWire(d: DecodeSettings, isRaw: boolean): WireDecode | null {
   if (!isRaw) return null;
-  const lens = { ...(d.rawDecoder ? { raw_decoder: d.rawDecoder } : {}), ...(d.lensCorrection ? { lens_correction: true, ...(d.lensProfile ? { lens_profile: d.lensProfile } : {}) } : {}),
+  const lens = { ...(d.rawTone ? { raw_tone: d.rawTone } : {}), ...(d.rawDecoder ? { raw_decoder: d.rawDecoder } : {}), ...(d.lensCorrection ? { lens_correction: true, ...(d.lensProfile ? { lens_profile: d.lensProfile } : {}) } : {}),
     ...(d.apply_camera_curve ? { apply_camera_curve: true, ...(d.cameraCurve?.profile ? { camera_profile: d.cameraCurve.profile } : {}) } : {}) };
   if (modeOf(d) === 'As Shot') return { white_balance: { mode: 'as_shot' }, ...lens };
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));

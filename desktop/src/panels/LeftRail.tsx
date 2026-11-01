@@ -84,7 +84,8 @@ function NavigatorSection() {
   const canvasPx = useSession((s) => s.canvasPx);
   const native = useSession((s) => s.nativeSize);
   const geometry = useSession((s) => s.sidecar.geometry);
-  const o = native ? outputSize(geometry, native) : null;
+  const rawEditing=useSession(s=>s.rawEditing);
+  const o = native ? rawEditing?native:outputSize(geometry, native) : null;
   // The part of the output the canvas shows, in output uv.
   const vis =
     o && !view.fit
@@ -251,6 +252,8 @@ function FilmEdgeSection() {
   return (
     <Section id="filmEdge" title={t('sectionFilmEdge')} unsupported={reason}>
       <ToggleRow label={t('sectionFilmEdge')} on={fe.active} disabled={!gate.overscan} reason={reason ?? undefined} onChange={(v) => set({ active: v })} testId="film-edge-enable" />
+      {!pair&&<ToggleRow label={tz('Frame follows crop','片边跟随裁剪')} on={fe.followCrop} disabled={off} onChange={followCrop=>set({followCrop})} testId="film-edge-follow-crop"/>}
+      {!pair&&fe.followCrop&&<p className="caption">{tz('The chosen crop keeps its framing; the film border surrounds it. Turn off to lock the physical camera-gate ratio.','保留已选裁剪构图，在外侧生成片边；关闭后才锁定真实相机片窗比例。')}</p>}
       <PillMenu
         label={t('edgeFormat')}
         value={fe.format}
@@ -271,7 +274,7 @@ function FilmEdgeSection() {
       />
       {!pair && <div className="row"><span className="row-label">{tz('Framing', '取景')}</span>
         <button className="pill-menu" disabled={off || !selection} onClick={() => setTool(tool === 'crop' ? 'select' : 'crop')}>{tool === 'crop' ? tz('Done', '完成') : tz('Frame', '取景')}</button>
-        <button className="icon-btn" disabled={off || !selection} onClick={flipFilmGate} title={tz('Swap gate orientation', '切换片窗横竖方向')}>↔</button></div>}
+        <button className="icon-btn" disabled={off || !selection || fe.followCrop} onClick={flipFilmGate} title={fe.followCrop?tz('Use the crop Portrait control.','跟随裁剪时请使用裁剪的竖向开关。'):tz('Swap gate orientation', '切换片窗横竖方向')}>↔</button></div>}
       {!pair && fe.format === '135_half' && <button className="pill-menu" disabled={off || !canMakePair()} onClick={() => void makePair(true)}>{tz('Add a second half frame…', '添加第二张半格照片…')}</button>}
       <PillMenu label={tz('Gate', '片窗')} value={fe.gate} disabled={off} options={[
         ['auto', tz('Camera', '跟随机身')], ['square', tz('Square', '直角')], ['rounded', tz('Rounded', '圆角')], ['eared', tz('Eared', '耳形')], ['shouldered', tz('Shouldered', '肩形')], ['kicked', tz('Kicked', '偏斜')],
@@ -339,6 +342,7 @@ function PrintSection() {
   const positive = catalog.isPositive(p.filmStock);
   const positiveReason = t('reasonPositiveFilmDisablesPaper');
   const silverPaper = catalog.isMonochrome(p.printStock);
+  const noFilm = useSession((s) => s.sidecar.noFilm);
   const diReason = unsupportedReason('digital_intermediate', gate.digitalIntermediate);
   const rows = [
     ...catalog.paperGroups().flatMap((g) =>
@@ -376,6 +380,16 @@ function PrintSection() {
       <ToggleRow label={tz('Scanner white-point correction', '扫描白点校正')} on={p.scannerWhiteCorrection} disabled={p.scanFilm || positive || p.digitalIntermediate} reason={tz('Available for paper prints.', '仅适用于相纸扫描。')} onChange={(v) => setParams((q) => ({ ...q, scannerWhiteCorrection: v }))} testId="scanner-white" />
       <ToggleRow label={tz('Scanner black-point correction', '扫描黑点校正')} on={p.scannerBlackCorrection} disabled={p.scanFilm || positive || p.digitalIntermediate} reason={tz('Available for paper prints.', '仅适用于相纸扫描。')} onChange={(v) => setParams((q) => ({ ...q, scannerBlackCorrection: v }))} testId="scanner-black" />
       <ScrubSlider label={tz('Scanner lens blur (px)', '扫描镜头模糊（像素）')} value={p.scannerLensBlur} range={[0, 20]} zero={0} snap={.1} format={(v) => v.toFixed(1)} disabled={!p.printEffects} onChange={(v) => setParams((q) => ({ ...q, scannerLensBlur: v }))} testId="scanner-blur" />
+      <ScrubSlider label={tz('Enlarger lens blur (px)', '放大机镜头模糊（像素）')} value={p.enlargerLensBlur} range={[0, 20]} zero={0} snap={0.05} format={(v) => v.toFixed(2)}
+        disabled={!p.printEffects || p.scanFilm || positive || p.digitalIntermediate || noFilm} reason={tz('Requires a paper print and Print Effects.', '需使用相纸并开启相纸效果。')}
+        onChange={(v) => setParams((q) => ({ ...q, enlargerLensBlur: v }))} testId="enlarger-lens-blur" />
+      <ScrubSlider label={tz('Scanner sharpening radius (px)', '扫描锐化半径（像素）')} value={p.scannerUnsharpRadius} range={[0, 20]} zero={0.7} snap={0.05} format={(v) => v.toFixed(2)}
+        disabled={p.digitalIntermediate || noFilm} reason={tz('Unavailable for source or digital intermediate.', '原图及数字中间片模式不适用。')}
+        onChange={(v) => setParams((q) => ({ ...q, scannerUnsharpRadius: v }))} testId="scanner-unsharp-radius" />
+      <ScrubSlider label={tz('Scanner sharpening amount', '扫描锐化强度')} value={p.scannerUnsharpAmount} range={[0, 4]} zero={0.7} snap={0.05} format={(v) => `${Math.round(v * 100)} %`} parse={(v) => Number.parseFloat(v) / 100}
+        disabled={p.digitalIntermediate || noFilm} reason={tz('Unavailable for source or digital intermediate.', '原图及数字中间片模式不适用。')}
+        onChange={(v) => setParams((q) => ({ ...q, scannerUnsharpAmount: v }))} testId="scanner-unsharp-amount" />
+      <p className="caption">{tz('Blur softens detail. Sharpening radius or amount at 0 disables USM. Enlarger blur and sharpening radius use full-resolution pixels; density diffusion follows the original grain model.', '模糊使细节柔化；锐化半径或强度设为 0 可关闭 USM。放大机模糊、锐化半径按原尺寸像素计算，密度扩散沿用原颗粒模型。')}</p>
       <ToggleRow
         label={t('printEDR')}
         sublabel={t('statusEDRScope')}
@@ -392,7 +406,7 @@ function PrintSection() {
 
 function CropSection() {
   const g = useSession((s) => s.sidecar.geometry);
-  const gateHeld = useSession((s) => edgeEffective(s.sidecar.params.filmEdge, s.gate));
+  const gateHeld = useSession((s) => edgeEffective(s.sidecar.params.filmEdge, s.gate)&&!s.sidecar.params.filmEdge.followCrop);
   const pair = useSession((s) => s.pair);
   const native = useSession((s) => s.nativeSize);
   const size = native ?? { width: 3000, height: 2000 };

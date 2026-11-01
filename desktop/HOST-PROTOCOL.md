@@ -1,5 +1,90 @@
 # SpektraLab host protocol (Linux / Windows desktop)
 
+## Extended file output (additive protocol 1; source implementation)
+
+`raw_tone` advertises `decode.raw_tone` for a RAW source. Optional scalar
+controls are exposure [-5,5] EV and contrast/highlights/shadows/whites/blacks
+[-100,100], plus RGB/luma/red/green/blue curve objects. Defaults are identity.
+After native decode, lens correction and optional DCP, the host adjusts its
+owned linear-ProPhoto float32 input, then uploads that same source for film,
+original view and export. Exposure is true linear gain; tonal corrections are
+smooth luminance-dependent EV offsets. Curves use log2(1+abs(L)/0.18), scaled
+to one at L=1, with monotone cubic interpolation and extended HDR endpoints.
+No new CPU source copy is retained. Neutral settings do no pixel arithmetic.
+Pair decode snapshots carry the same tone before metering/composition.
+
+`raw_color` additionally advertises optional `decode.raw_tone.colorBalance`
+(master/shadows/midtones/highlights, hue ±360 degrees, saturation/luminance ±1)
+and `hsl` (red/orange/yellow/green/aqua/blue/purple/magenta, hue ±30 degrees,
+saturation/luminance ±100). Both use encoded ProPhoto coordinates inside the
+ingress pass and return linear float32 radiance before film. HSL extends its
+interval over negative/HDR channels instead of clipping the source to SDR.
+Zero strengths bypass all colour arithmetic. The RAW page displays the whole
+decoded source before film and crop, including the navigator/histogram; this
+view choice never toggles the saved `noFilm` recipe or post-development grade.
+RAW changes coalesce redecode requests and defer film rendering until leaving
+the page. Export continues to use its own frozen recipe and explicit mode.
+
+`auto_raw {session,mode:"tone"|"white_balance"}` performs an owned temporary
+decode without current tone, takes at most about 8192 sparse samples, and
+returns a proposed `raw_tone` or `temperature_k,tint`; it does not mutate the
+session. White balance uses a middle-tone grey-world estimate before DCP.
+The UI accepts only a still-current selection/decode snapshot and commits one
+undo entry. Automatic film metering can absorb the global RAW exposure gain.
+
+`crop_frame` advertises native `overscan_follow_crop` (shoot-layer boolean,
+default false on the engine wire). The Windows UI enables it by default for
+single-photo borders: the crop remains the gate image, with the chosen film
+gauge outside it. The cross-film gate dimension/pixel pitch fits that gauge,
+and the along-film dimension follows the crop, without stretching/re-cropping.
+The original strict physical gate is retained when false, and all pairs retain
+the existing strict half-frame path. This changes framing, never measured film
+data. Old sidecars with a held user crop migrate to that crop when opting in.
+
+`hello.view_options` additionally advertises `film_strength` and `hsl_texture`.
+`render_view`, `render_proof`, `export_frame` accept `film_strength` in [0,1],
+default 1 (exact old path, no blend allocation). Blend is in encoded ProPhoto,
+before global Post-Dev/HSL/detail/local masks. Zero uses the decoded float32
+source with identical upstream geometry. The actual physical gate coverage,
+scan registration and paired-gate mapping align it with a framed print;
+rebate/perforations outside the image gate remain independent decoration.
+Per-hole print/grade layers blend before their own grade. DI code export ignores
+the viewing amount; the DI preview supports only 1. Explicit no-film ignores it.
+Changing only amount reuses the negative/print cache, and display cache identity
+includes the amount as well as the AMD-safe format.
+
+`adjustments.hsl` has optional red/orange/yellow/green/aqua/blue/purple/magenta
+objects, each `hue` [-30,30] degrees, `saturation`/`luminance` [-100,100].
+Adjacent hue centers form continuous triangular ranges; neutral grey is excluded.
+`texture`/`clarity` [-100,100] use bounded eight-neighbor local contrast at
+1.5/12 pixels per 2048 long-edge, with bilinear samples and a midtone clarity
+weight. This is Spektra's own implementation. Detail then HSL run after global
+grade and before local masks/geometry/output. Missing/zero controls skip the
+whole pass; `enabled:false` bypasses it. The same settings persist in recipes,
+undo, batch snapshots and Lighttable developed proofs.
+
+`hello.export_formats` advertises `tiff16`, `tiff8`, `png`, `png16`, `jpeg`,
+and `webp-lossless`. PNG16 consumes native RGB16 samples and writes network-order
+16-bit PNG samples; WebP is opaque RGB8 lossless, exact RGB and ICC/EXIF, with
+a 16383-pixel maximum dimension. File depth is independent of AMD RGBA8 display.
+`export_frame`, `render_proof`, `write_image` and `export_image` accept the
+appropriate additive format values. Proof is before JPEG compression.
+
+`copy_original {source_path,path,recipe,overwrite:false,progress_id?}` copies
+unchanged source bytes plus `<path>.spektra-recipe.json`. Neither destination
+may exist. A changed source, cancellation or copy failure removes only this
+operation's new partial files/companion. Source originals are never changed.
+The companion envelope is `{type:"SpektraRecipe",version:1,source_name,
+source_bytes,sidecar:recipe}`. `read_recipe {path}` validates this envelope
+(8 MiB limit); `write_recipe {path,recipe}` writes a new atomic portable JSON
+without overwriting an existing file. These methods return no image payload.
+
+The RAW master UI recipe requests `no_film:true`, identity grade and geometry,
+full decoded size and TIFF16. It includes selected RAW decode parameters,
+not a reconstructed mosaic/DNG. Original copy remains the byte-exact RAW.
+Portable recipes omit UI history; bounded `spektraHistory` lives only in the
+app sidecar and is excluded from render/cache identity and external-edit checks.
+
 The Linux/Windows desktop app is two processes:
 
 - **`spektralab-host`** (`engine/host/`, C++20): owns the engine (`spk_*` C ABI,
@@ -81,10 +166,10 @@ the monitor. Recipe-specific size, depth and gamut soft proof remains separate.
 
 `hello.source_formats` optionally advertises the decoded original's transports,
 independently of `view_formats` for processed film pictures. New clients request
-RGBA16 when explicitly advertised, retaining the same precision as the Mac
-original texture. Without this capability they retain the legacy RGBA8 request.
-An explicit format must be honoured; silently returning RGBA8 for an RGBA16
-request is rejected. Cache descriptors include the negotiated source format.
+RGBA16 when explicitly advertised, except for the AMD/Radeon compatibility
+policy below. Without this capability they retain the legacy RGBA8 request.
+An explicit format must be honoured; mismatched response formats are rejected.
+Cache descriptors include the effective negotiated source format.
 
 ## 3. Methods
 
@@ -275,13 +360,21 @@ The old `render`, `export_image` and `write_image` contracts remain available.
 view transport. `render_view.format` defaults to `rgba8` for older clients;
 `rgba16` is little-endian display-encoded RGBA UNORM16, eight bytes per pixel,
 and its `image.row_bytes` is `width * 8`. The desktop requests 16 bits only
-when advertised, keeps exact codes in a WebGL2 RGBA16UI texture and performs
+when advertised and the active GPU is not AMD/Radeon, keeps exact codes in a WebGL2 RGBA16UI texture and performs
 interpolation in float. Where `drawingBufferStorage` and
 `EXT_color_buffer_float` actually accept RGBA16F, the SDR drawing buffer is
 float16; otherwise it falls back to RGBA8 without prematurely rounding the
 source texture. This is not HDR, nor a claim that a monitor outputs 10 bits.
-Navigation/histogram/thumbnail targets remain small RGBA8 images; source and
-export-proof transports currently remain RGBA8. The print/export computations
+The AMD/Radeon compatibility path requests RGBA8 for both processed views and
+decoded source views. `desktop/src/host/previewFormat.ts` owns this decision;
+display-cache descriptors use the same policy, including original and
+processed snapshots, so old RGBA16 keys cannot warm the AMD-safe path.
+The active native GPU name is used, falling back to the capability GPU name
+only when needed; CPU/build strings do not determine display precision.
+NVIDIA/Intel retain advertised RGBA16. This is a client display policy, not a
+change to native format capabilities or the wire schema.
+Navigation/histogram/thumbnail and export-proof targets remain RGBA8.
+The print/export computations
 and exported bit depth are unaffected by the display buffer choice.
 
 `hello.export_spaces` advertises the supported recipe wire names: `sRGB`,

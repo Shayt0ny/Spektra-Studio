@@ -32,7 +32,7 @@ export interface Settings {
   decoupleEffects: boolean;
   recalculateEffectsAfterCrop: boolean;
   diBlueCompensation: boolean;
-  parametersTab: 'preDev' | 'postDev';
+  parametersTab: 'raw' | 'preDev' | 'postDev';
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   filmstripCollapsed: boolean;
@@ -79,6 +79,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null): Settings
       if (v !== undefined && (typeof v === typeof d || d === null)) out[k] = v;
     }
     const s = out as unknown as Settings;
+    if (!['raw','preDev','postDev'].includes(s.parametersTab)) s.parametersTab='preDev';
     if (!INTERFACE_SCALES.includes(s.interfaceScale)) s.interfaceScale = SETTINGS_DEFAULT.interfaceScale;
     if (!(PREVIEW_EDGES as readonly number[]).includes(s.previewLongEdge)) s.previewLongEdge = SETTINGS_DEFAULT.previewLongEdge;
     if (!(['auto', 'srgb', 'display-p3'] as const).includes(s.previewGamut)) s.previewGamut = SETTINGS_DEFAULT.previewGamut;

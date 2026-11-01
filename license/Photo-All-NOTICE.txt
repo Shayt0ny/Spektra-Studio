@@ -1,0 +1,22 @@
+Photo-All workflow reference / Photo-All 观片台流程参考
+
+Upstream: https://github.com/YZH2006517/Photo-All
+Repository owner: YZH2006517; upstream contributors retain their attribution.
+Reviewed revision: 0ad5af2319090eafcc1efe11f7467b6abacc5fe4 (2026-10-31).
+Upstream application code: GPL-3.0-or-later.
+License: https://github.com/YZH2006517/Photo-All/blob/0ad5af2319090eafcc1efe11f7467b6abacc5fe4/LICENSE
+
+Spektra Studio acknowledges Photo-All as a reference for a physical lightbox,
+movable film pieces, display-only lamp brightness, tiling, placement sizing
+and rotation, a loupe, and contact-sheet,
+single-photo and film-roll review, keep/reject/unmark workflow, automatic
+advance, sequential saving and bounded shared previews.
+
+The Spektra Studio viewer is independently implemented and uses its existing
+native renderer. Photo-All source files, Python service, RAW runtime, LUTs,
+recognition models and Motion library are not bundled by this integration.
+See PHOTO_ALL_REFERENCE.md in the repository and distribution for scope.
+
+观片台工作流参考 YZH2006517 及 Photo-All 贡献者的开放实现，感谢其贡献。
+新界面、选片存储和缓存调度独立集成，原片、显影模型、调色和导出保持原有管线。
+没有将对方完整应用或资源作为运行时依赖引入。

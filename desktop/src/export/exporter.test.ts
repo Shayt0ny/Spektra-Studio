@@ -47,6 +47,26 @@ beforeEach(() => {
 });
 
 describe('export without film simulation', () => {
+  it('routes PNG16 and lossless WebP to advertised native codecs, with the frozen whole-film amount', async () => {
+    const f=frame();f.filmStrength=.2;
+    for(const id of ['png16-srgb','webp-lossless']) {
+      const r=structuredClone(DEFAULT_RECIPES.find(x=>x.id===id)!);fake.request.mockClear();
+      expect((await exportFrame(r,f,catalog,['export_frame'],{exportFormats:['png16','webp-lossless']})).kind).toBe('written');
+      expect(fake.request.mock.calls[0]?.[1]).toMatchObject({format:id==='png16-srgb'?'png16':'webp-lossless',film_strength:.2});
+    }
+  });
+  it('writes a full-size neutral RAW master and keeps the file recipe separate from a byte-exact original copy', async () => {
+    const f=frame();f.filmStrength=.2;f.adjustments.exposure=2;f.geometry={...GEOMETRY_DEFAULT,quarterTurns:1};
+    const master=structuredClone(DEFAULT_RECIPES.find(x=>x.id==='raw-master')!);
+    expect((await exportFrame(master,f,catalog,['export_frame'],{frameOptions:['no-film']})).kind).toBe('written');
+    expect(fake.request.mock.calls[0]?.[1]).toMatchObject({format:'tiff16',no_film:true,long_edge:0,geometry:GEOMETRY_DEFAULT,adjustments:{exposure:0}});
+    expect(fake.request.mock.calls[0]?.[1]).not.toHaveProperty('film_strength');
+    fake.request.mockClear();const original=structuredClone(DEFAULT_RECIPES.find(x=>x.id==='original-copy')!);original.existing='overwrite';
+    expect((await exportFrame(original,f,catalog,['copy_original'])).kind).toBe('written');
+    expect(fake.request.mock.calls[0]?.[0]).toBe('copy_original');
+    expect(fake.request.mock.calls[0]?.[1]).toMatchObject({source_path:f.path,overwrite:false,recipe:{adjustments:{exposure:2}}});
+    expect(fake.request.mock.calls[0]?.[1].path).toMatch(/\.NEF$/);
+  });
   it('omits the bypass wire key entirely for ordinary film output and proof', async () => {
     const f = frame();
     await exportFrame(recipe(), f, catalog, ['export_frame']);

@@ -36,6 +36,24 @@ beforeEach(async () => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('decoded source preview', () => {
+  it('enters the RAW page as a view choice and restores the film view without changing its recipe',async()=>{
+    const sidecar=state().sidecar;session.setView({fit:false,zoom:.7,cx:.3,cy:.6});
+    const view=state().view;session.setParametersStage('raw');await vi.advanceTimersByTimeAsync(1);
+    expect(state()).toMatchObject({rawEditing:true,showingOriginal:true,comparing:false,view:{fit:true,cx:.5,cy:.5}});
+    expect(state().sidecar).toBe(sidecar);
+    session.setOriginal(false);session.toggleCompare();expect(state().showingOriginal).toBe(true);expect(state().comparing).toBe(false);
+    fake.render.mockClear();
+    session.setDecode(d=>({...d,rawTone:{exposure:0,contrast:0,highlights:0,shadows:0,whites:0,blacks:0,curves:sidecar.adjustments.curves,hsl:{red:{hue:20,saturation:0,luminance:0}}}}));
+    await vi.advanceTimersByTimeAsync(351);
+    expect(fake.redecode).toHaveBeenLastCalledWith('s1',expect.objectContaining({raw_tone:expect.objectContaining({hsl:{red:{hue:20,saturation:0,luminance:0}}})}));
+    expect(fake.render).not.toHaveBeenCalled();expect(state().sidecar.params).toEqual(sidecar.params);expect(state().sidecar.adjustments).toEqual(sidecar.adjustments);
+    session.setParametersStage('postDev');await vi.advanceTimersByTimeAsync(1);
+    expect(state()).toMatchObject({rawEditing:false,showingOriginal:false,view});expect(fake.render).toHaveBeenCalled();
+  });
+  it('refuses RAW page for non-RAW files and during batch export',()=>{
+    session.sessionStore.setState({selection:'/owned/a.jpg'});session.setParametersStage('raw');expect(state().rawEditing).toBe(false);
+    session.sessionStore.setState({selection:'/owned/a.ARW',batchExporting:true});session.setParametersStage('raw');expect(state().rawEditing).toBe(false);
+  });
   it('camera curve changes the native decode input and undo restores the original pipeline', async () => {
     const profile = { version: 1 as const, name: 'owned.dcp', camera: 'Fixture', description: '', copyright: '', tags: {} };
     session.setDecode((d) => ({ ...d, apply_camera_curve: true, cameraCurve: { profile } }));
@@ -55,7 +73,7 @@ describe('decoded source preview', () => {
     expect(fake.source).toHaveBeenCalledTimes(1);
     session.noteDisplaySpace('display-p3'); await vi.advanceTimersByTimeAsync(1);
     expect(frames.frameImages.original?.colorSpace).toBe('Display P3');
-    session.setView({ fit: false, zoom: 1 }); await vi.advanceTimersByTimeAsync(1);
+    session.setView({ fit: false, zoom: 1 }); await vi.advanceTimersByTimeAsync(221);
     expect(fake.source).toHaveBeenLastCalledWith('s1', expect.objectContaining({ long_edge: 0, display: 'display-p3' }));
   });
 

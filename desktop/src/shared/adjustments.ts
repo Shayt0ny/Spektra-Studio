@@ -13,6 +13,7 @@
 
 import { clamp } from './params.ts';
 import {decodeLocalMasks,maskCoverage,rasterizeBrush,type LocalMask} from './localMasks.ts';
+import { applyDetail, decodeDetail, detailActive, type ColorDetail } from './colorDetail';
 
 export interface ColorZone {
   hue: number;
@@ -37,7 +38,7 @@ export type CurveChannel = 'rgb' | 'luma' | 'red' | 'green' | 'blue';
 export const CURVE_CHANNELS: CurveChannel[] = ['rgb', 'luma', 'red', 'green', 'blue'];
 export type CurveSet = Record<CurveChannel, Curve>;
 
-export interface Adjustments {
+export interface Adjustments extends ColorDetail {
   localMasks?: LocalMask[];
   enabled: boolean;
   temperature: number;
@@ -93,6 +94,7 @@ export const zoneNeutral = (z: ColorZone) => z.saturation === 0 && z.luminance =
 
 export function isNeutral(a: Adjustments): boolean {
   return (
+    !detailActive(a) &&
     !(a.localMasks?.some(m=>m.enabled&&m.amount>0&&Object.values(m.adjustments).some(v=>v!==0))) &&
     a.temperature === 0 &&
     a.tint === 0 &&
@@ -392,6 +394,12 @@ export function layer2Pixel(
 
 /** The whole layer on an RGBA float buffer (0…1), in place — a print, before geometry. */
 export function applyLayer2(data: Float32Array, width: number, height: number, a: Adjustments, midGrey: number): void {
+  if(a.enabled && detailActive(a)) {
+    applyLayer2(data,width,height,{...a,hsl:undefined,texture:undefined,clarity:undefined,localMasks:[]},midGrey);
+    applyDetail(data,width,height,a);
+    if(a.localMasks?.length)applyLayer2(data,width,height,{...ADJUSTMENTS_DEFAULT,localMasks:a.localMasks},midGrey);
+    return;
+  }
   const u = layer2Uniforms(a, midGrey);
   if (!u.enabled) return;
   const tables = u.curvesActive ? curveTables(a.curves) : null;
@@ -438,6 +446,7 @@ export function decodeAdjustments(raw: unknown): Adjustments {
   const v = obj(o.vignette);
   return {
     ...(o.localMasks===undefined?{}:{localMasks:decodeLocalMasks(o.localMasks)}),
+    ...decodeDetail(o),
     enabled: typeof o.enabled === 'boolean' ? o.enabled : true,
     temperature: num(o.temperature, d.temperature),
     tint: num(o.tint, d.tint),

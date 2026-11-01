@@ -138,9 +138,9 @@ if(SPEKTRALAB_PORTABLE_BACKEND)
             spk_affine3 spk_tc_b spk_lut2d_cubic spk_sep_fir_acc spk_iir_df_acc
             spk_lincomb3 spk_log10_guarded spk_curves
             spk_couplers_correction spk_spectral_epilogue
-            spk_print_exposure spk_cam16ucs_compress
+            spk_print_exposure spk_enlarger_blur_io spk_cam16ucs_compress
             spk_cctf_encode_matrix spk_to_rgba16
-            spk_view_grade spk_view_grade_float spk_view_grade_di spk_view_geometry spk_view_pack spk_view_cam16 spk_view_pair spk_view_local_masks
+            spk_view_grade spk_view_grade_float spk_view_grade_di spk_view_geometry spk_view_pack spk_view_cam16 spk_view_pair spk_view_local_masks spk_view_film_mix spk_view_detail
             spk_grain_layers spk_grain_layer_one spk_grain_simple
             spk_lognormal_field spk_rng_probe spk_mul spk_glare_add
             spk_reduce_max spk_boost spk_highlight_headroom spk_bw_correct spk_edr spk_cctf_decode

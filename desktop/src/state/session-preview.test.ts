@@ -114,6 +114,8 @@ describe('processed preview scheduling', () => {
     fake.setParams.mockClear();
     session.setView({ fit: false, zoom: 1 });
     await vi.advanceTimersByTimeAsync(0);
+    expect(fake.renderView).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(220);
     expect(fake.renderView).toHaveBeenCalledOnce();
     expect(fake.renderView.mock.calls[0]![2]).toMatchObject({ long_edge: 0 });
     expect(fake.setParams).not.toHaveBeenCalled();

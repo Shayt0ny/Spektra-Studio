@@ -4,10 +4,12 @@
 
 import { useRef, useState } from 'react';
 import { type CurveChannel, evaluateCurve, insertPoint, movePoint, removePoint } from '@shared/adjustments';
-import { beginGesture, setAdjustments, shownAdjustments, useSession } from '../state/session';
+import { beginGesture, setAdjustments, setDecode, shownAdjustments, useSession } from '../state/session';
+import { RAW_TONE_DEFAULT } from '@shared/rawTone';
 import { useOutput } from '../canvas/output';
 import { computeHistogram } from '../canvas/histogram';
 import { t } from '../i18n';
+import { NumberField } from '../controls/controls';
 
 const S = 200;
 const STROKE: Record<CurveChannel, string> = {
@@ -18,18 +20,19 @@ const STROKE: Record<CurveChannel, string> = {
   blue: 'var(--hist-b)',
 };
 
-export function CurveEditor({ channel }: { channel: CurveChannel }) {
-  const curve = useSession((s) => shownAdjustments(s).curves[channel]);
+export function CurveEditor({ channel, stage='post' }: { channel: CurveChannel; stage?:'post'|'raw' }) {
+  const curve = useSession((s) => stage==='raw'?(s.sidecar.decode.rawTone??RAW_TONE_DEFAULT).curves[channel]:shownAdjustments(s).curves[channel]);
   const out = useOutput();
   const ref = useRef<SVGSVGElement>(null);
   const drag = useRef<number | null>(null);
   const [readout, setReadout] = useState<string>('');
+  const [selected,setSelected]=useState<number|null>(null);
 
   const at = (e: React.PointerEvent) => {
     const r = ref.current!.getBoundingClientRect();
     return { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height };
   };
-  const set = (fn: (c: typeof curve) => typeof curve) => setAdjustments((a) => ({ ...a, curves: { ...a.curves, [channel]: fn(a.curves[channel]) } }));
+  const set = (fn: (c: typeof curve) => typeof curve) => stage==='raw'?setDecode(d=>{const a=d.rawTone??RAW_TONE_DEFAULT;return{...d,rawTone:{...a,curves:{...a.curves,[channel]:fn(a.curves[channel])}}};}):setAdjustments((a) => ({ ...a, curves: { ...a.curves, [channel]: fn(a.curves[channel]) } }));
 
   const near = (p: { x: number; y: number }) => {
     let best = -1;
@@ -45,7 +48,7 @@ export function CurveEditor({ channel }: { channel: CurveChannel }) {
   };
 
   let hist = '';
-  if (out) {
+  if (out && stage==='post') {
     const h = computeHistogram(out.data);
     const bins = channel === 'red' ? h.r : channel === 'green' ? h.g : channel === 'blue' ? h.b : h.y;
     const peak = Math.max(1, ...Array.from(bins).sort((a, b) => a - b).slice(-3, -2));
@@ -63,7 +66,7 @@ export function CurveEditor({ channel }: { channel: CurveChannel }) {
         className="plot"
         viewBox={`0 0 ${S} ${S}`}
         style={{ aspectRatio: '1', cursor: 'crosshair', touchAction: 'none' }}
-        data-testid="curve-editor"
+        data-testid={stage==='raw'?'raw-curve-editor':'curve-editor'}
         onPointerDown={(e) => {
           (e.target as Element).setPointerCapture(e.pointerId);
           const p = at(e);
@@ -75,6 +78,7 @@ export function CurveEditor({ channel }: { channel: CurveChannel }) {
             i = r.index;
           }
           drag.current = i;
+          setSelected(i);
         }}
         onPointerMove={(e) => {
           const p = at(e);
@@ -109,6 +113,10 @@ export function CurveEditor({ channel }: { channel: CurveChannel }) {
         ))}
       </svg>
       <div className="caption num">{readout || ' '}</div>
+      {selected!==null&&curve.points[selected]&&<div className="row">
+        <label className="caption">{t('curveInput')}<NumberField value={curve.points[selected]![0]*255} decimals={1} onCommit={v=>{beginGesture();set(c=>movePoint(c,selected,Math.max(0,Math.min(255,v))/255,c.points[selected]![1]));}}/></label>
+        <label className="caption">{t('curveOutput')}<NumberField value={curve.points[selected]![1]*255} decimals={1} onCommit={v=>{beginGesture();set(c=>movePoint(c,selected,c.points[selected]![0],Math.max(0,Math.min(255,v))/255));}}/></label>
+      </div>}
     </div>
   );
 }

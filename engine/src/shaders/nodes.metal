@@ -13,6 +13,17 @@
 // rather than a transcription.
 #include "spk_common.h"
 
+// Copyright (C) 2026 shayt0ny: optional linear-light enlarger blur boundary.
+kernel void spk_enlarger_blur_io(device const float* x [[buffer(0)]],
+                                constant uint* meta [[buffer(1)]],
+                                device float* out [[buffer(2)]],
+                                uint3 pos [[thread_position_in_grid]]) {
+    uint i = pos.x;
+    if (i >= meta[0]) return;
+    out[i] = meta[1] == 0 ? exp2(x[i] * 3.321928094887362f)
+        : log(max(x[i], 1e-10f)) * 0.4342944819032518f;
+}
+
 // ``log10(fmax(x * c, 0) + 1e-10)`` -- the guard every log node uses;
 // ``c`` may be per channel.
 kernel void spk_log10_guarded(device const float* x [[buffer(0)]],

@@ -149,6 +149,7 @@ const SchemaField kFields[] = {
     // before `preview_long_edge` like every native field. SHOOT layer: both
     // are exposure on the negative, so an edit re-develops it.
     {"overscan_active",          "film_render.overscan.active",           B, SHOOT, false, 0, 0, false},
+    {"overscan_follow_crop",     "film_render.overscan.follow_crop",      B, SHOOT, false, 0, 0, false},
     {"overscan_format",          "film_render.overscan.format",           S, SHOOT, false, 0, 0, false},
     {"overscan_mode",            "film_render.overscan.mode",             S, SHOOT, false, 0, 0, false},
     {"overscan_camera_seed",     "film_render.overscan.camera_seed",      I, SHOOT, true, 0.0, 2147483647.0, false},
@@ -209,6 +210,11 @@ const SchemaField kFields[] = {
     // back-reflection halo only (a film with no anti-halation layer). Native
     // only, SHOOT, after `camera_filter`. Every film with a layer ignores it.
     {"halation_headroom_ev",     "film_render.halation.headroom_ev",      F, SHOOT, true, 0.0, 8.0, false},
+    // Windows spatial controls (shayt0ny, 2026). Existing model defaults stay intact.
+    {"grain_blur",               "film_render.grain.blur",               F, SHOOT, true, 0.0, 10.0, false},
+    {"enlarger_lens_blur",        "enlarger.lens_blur",                    F, PRINT, true, 0.0, 20.0, false},
+    {"scanner_unsharp_radius",    "scanner.unsharp_mask.0",               F, PRINT, true, 0.0, 20.0, false},
+    {"scanner_unsharp_amount",    "scanner.unsharp_mask.1",               F, PRINT, true, 0.0, 4.0, false},
     // The app's *preview resolution*: the `live` tier's long edge, and so the
     // size every interactive edit renders at. PRINT layer, because it is a
     // decision about the canvas rather than about the film -- but it is one of
@@ -232,6 +238,10 @@ double* float_slot(Params& p, const std::string& path) {
     if (path == "camera.exposure_compensation_ev") return &p.camera.exposure_compensation_ev;
     if (path == "camera.film_format_mm") return &p.camera.film_format_mm;
     if (path == "camera.lens_blur_um") return &p.camera.lens_blur_um;
+    if (path == "film_render.grain.blur") return &p.film_render.grain.blur;
+    if (path == "enlarger.lens_blur") return &p.enlarger.lens_blur;
+    if (path == "scanner.unsharp_mask.0") return &p.scanner.unsharp_mask[0];
+    if (path == "scanner.unsharp_mask.1") return &p.scanner.unsharp_mask[1];
     if (path == "film_render.halation.halation_amount") return &p.film_render.halation.halation_amount;
     if (path == "film_render.halation.boost_ev") return &p.film_render.halation.boost_ev;
     if (path == "film_render.halation.headroom_ev") return &p.film_render.halation.headroom_ev;
@@ -304,6 +314,7 @@ bool* bool_slot(Params& p, const std::string& path) {
     if (path == "camera.scene_latitude.active") return &p.camera.scene_latitude.active;
     if (path == "camera.scene_latitude.b_active") return &p.camera.scene_latitude.b_active;
     if (path == "film_render.overscan.active") return &p.film_render.overscan.active;
+    if (path == "film_render.overscan.follow_crop") return &p.film_render.overscan.follow_crop;
     if (path == "film_render.overscan.pair") return &p.film_render.overscan.pair;
     if (path == "film_render.date_imprint.active") return &p.film_render.date_imprint.active;
     return nullptr;
