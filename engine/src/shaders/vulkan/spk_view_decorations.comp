@@ -1,0 +1,16 @@
+#version 450
+layout(local_size_x=256) in;
+layout(binding=0,std430) readonly buffer Photograph { float v[]; } photo;
+layout(binding=1,std430) readonly buffer Decorations { uint v[]; } marks;
+layout(binding=2,std430) readonly buffer Meta { uint v[]; } meta;
+layout(binding=3,std430) writeonly buffer Output { float v[]; } dst;
+void main() {
+    uint i=gl_GlobalInvocationID.y*(gl_NumWorkGroups.x*gl_WorkGroupSize.x)+gl_GlobalInvocationID.x;
+    if(i>=meta.v[0])return;
+    uint rg=marks.v[2u*i],ba=marks.v[2u*i+1u];
+    float alpha=float(ba>>16u)/65535.0;
+    vec3 mark=vec3(rg&65535u,rg>>16u,ba&65535u)/65535.0;
+    vec3 source=vec3(photo.v[3u*i],photo.v[3u*i+1u],photo.v[3u*i+2u]);
+    vec3 result=alpha==0.0?source:alpha==1.0?mark:mix(source,mark,alpha);
+    dst.v[3u*i]=result.r;dst.v[3u*i+1u]=result.g;dst.v[3u*i+2u]=result.b;
+}

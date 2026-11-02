@@ -1,0 +1,41 @@
+#version 450
+// Scan/output appearance only. Keep every pixel's encoded working-space
+// luminance; suppress fine inter-layer chroma fluctuations, not film density.
+layout(local_size_x=256) in;
+layout(binding=0,std430) readonly buffer Input { float v[]; } src;
+layout(binding=1,std430) readonly buffer Config { float v[]; } cfg;
+layout(binding=2,std430) readonly buffer Meta { uint v[]; } m;
+layout(binding=3,std430) writeonly buffer Output { float v[]; } dst;
+const vec3 Y=vec3(.2880402,.7118741,.0000857); // ProPhoto RGB, D50
+vec3 rgb(ivec2 p) {
+    p=clamp(p,ivec2(0),ivec2(m.v[1]-1u,m.v[2]-1u));
+    uint i=3u*(uint(p.y)*m.v[1]+uint(p.x));return vec3(src.v[i],src.v[i+1u],src.v[i+2u]);
+}
+void main() {
+    uint i=gl_GlobalInvocationID.y*(gl_NumWorkGroups.x*gl_WorkGroupSize.x)+gl_GlobalInvocationID.x;
+    if(i>=m.v[0])return;
+    ivec2 p=ivec2(i%m.v[1],i/m.v[1]);
+    vec3 c=rgb(p);float y=dot(c,Y);vec3 chroma=c-y;
+    vec3 total=vec3(0);float weights=0.0;
+    for(int k=-4;k<=4;++k) {
+        vec3 n=rgb(p+(m.v[3]==0u?ivec2(k,0):ivec2(0,k)));
+        float ny=dot(n,Y);vec3 nc=n-ny,delta=nc-chroma;
+        // Compact chroma support keeps distinct color edges separate. The
+        // luminance guide protects tonal structure without blurring grain Y.
+        float affinity=max(0.0,1.0-dot(delta,delta)/.09);affinity*=affinity;
+        float tonal=max(0.0,1.0-(ny-y)*(ny-y)/.09);tonal*=tonal;
+        float w=exp(-float(k*k)/8.0)*affinity*tonal;
+        total+=w*nc;weights+=w;
+    }
+    vec3 color=mix(chroma,total/weights,.9*clamp(cfg.v[0],0.0,1.0));
+    color-=dot(color,Y);
+    // Fit chroma around the original Y instead of clipping RGB and changing
+    // its grain/brightness near black, white or saturated colors.
+    float fit=1.0;
+    for(uint ch=0u;ch<3u;++ch) {
+        if(color[ch]>0.0)fit=min(fit,(1.0-y)/color[ch]);
+        else if(color[ch]<0.0)fit=min(fit,-y/color[ch]);
+    }
+    vec3 out_color=vec3(y)+color*clamp(fit,0.0,1.0);
+    dst.v[3u*i]=out_color.r;dst.v[3u*i+1u]=out_color.g;dst.v[3u*i+2u]=out_color.b;
+}

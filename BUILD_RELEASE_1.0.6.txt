@@ -1,0 +1,15 @@
+Spektra Studio 1.0.6-win.1 / 2026-11-03
+See BUILD_WINDOWS_R4.md for pinned dependencies and native/desktop builds.
+Native configure: enable RAW, host, static runtime, test DLL and BUILD_TESTING;
+set SPEKTRALAB_HOST_VERSION=1.0.6-win.1 and REQUIRE_VULKAN=ON.
+cmake --build <native build> -j 6
+ctest --test-dir <native build> --output-on-failure
+desktop: npm ci; npm run check; npm run build:web
+cargo build --manifest-path src-tauri/Cargo.toml --release --locked --features tauri/custom-protocol
+Use GNU Rust and a CARGO_TARGET_DIR with no spaces (BUILD_WINDOWS.md).
+Stage newly built shell, host, matching raw-candidate DLL and all engine resources.
+Retain locked WebView2Loader DLL and dependency notices. Build the CLI with
+node scripts/build-agent.mjs <portable app dir> --runtime using verified Node v24.19.0.
+Portable assembly uses a new directory under desktop/.cache/packaging; publish
+only after staged-resource, native browser and bundled CLI/MCP gates pass.
+See WINDOWS_STUDIO_1.0.6.md and the portable VALIDATION.txt for validation limits.

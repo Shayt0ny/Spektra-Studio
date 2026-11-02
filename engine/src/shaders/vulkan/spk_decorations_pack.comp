@@ -1,0 +1,41 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define SPK_DECORATIONS_PACK
+#include "spk_overscan_body.glsl"
+layout(set=0,binding=4,std430) readonly buffer Imprints { uint v[]; } mask;
+layout(set=0,binding=5,std430) readonly buffer Background { float v[]; } background;
+float gate_distance(vec2 xy) {
+    vec2 st=canvas_to_film(xy.x,xy.y);
+    if(params.v[P_PAIR_ADV]>0.0 && st.x>params.v[P_GS0]+0.5*(params.v[P_GW]+params.v[P_PAIR_ADV]))st.x-=params.v[P_PAIR_ADV];
+    return gate_sdf(st);
+}
+void main() {
+    uint i = gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+    if (i >= count.v[0]) return;
+    float ink = float((mask.v[i / 4u] >> (8u * (i % 4u))) & 255u) / 255.0;
+    float alpha = ink, border = 0.0;
+    vec2 xy=vec2(i%count.v[1],i/count.v[1]);
+    float distance=0.0;
+    if (count.v[2] != 0u) {
+        distance=gate_distance(xy);
+        border = 1.0 - penumbra(distance, params.v[P_PENUMBRA]);
+        alpha = max(alpha, border);
+    }
+    vec3 color=vec3(src.v[3u*i],src.v[3u*i+1u],src.v[3u*i+2u]);
+    // In the narrow gate transition, use the adjoining rebate's own color.
+    // The neutral scene's attenuated exposure is not part of the border ink.
+    float rim=params.v[P_PENUMBRA]+2.0*params.v[P_PX];
+    if(border>0.0 && distance<rim) {
+        vec2 normal=vec2(gate_distance(xy+vec2(1,0))-gate_distance(xy-vec2(1,0)),
+                         gate_distance(xy+vec2(0,1))-gate_distance(xy-vec2(0,1)));
+        normal/=max(length(normal),1e-10);
+        vec2 outside=xy+normal*((rim-distance)/params.v[P_PX]);
+        color=sample_frame(outside.x,outside.y,count.v[1],uint(params.v[P_CH]));
+    }
+    if(border==0.0 && ink>0.0)
+        color=(color-vec3(background.v[0],background.v[1],background.v[2])*(1.0-ink))/ink;
+    uvec3 c = uvec3(floor(clamp(color,0.0,1.0)*65535.0+0.5));
+    uint a = uint(floor(clamp(alpha,0.0,1.0)*65535.0+0.5));
+    dst.v[2u*i] = c.r | (c.g << 16u);
+    dst.v[2u*i+1u] = c.b | (a << 16u);
+}
