@@ -402,27 +402,6 @@ the navigator broke while every suite was green (§9).
 `ThumbnailCache` holds the **uncropped** print thumbnail on purpose; each
 surface applies the geometry itself.
 
-**Windows independent Lighttable (`desktop/src/lighttable/`).** Entry defaults
-to `FilmDesk`: a display-only physical lightbox, with up to twelve film pieces
-per tray, camera thumbnails, and a 2048 px loupe. Camera previews intentionally
-show the original, not the current crop/recipe, and are labelled as such.
-An explicit developed selection uses the frozen recipe's output through the
-existing private proof renderer, including masks, crop, turn and flip. Only
-the selected piece requests that render; the loupe shares its image lease.
-Table placement rotation is an extra view transform, with inverse hit testing
-for the loupe; quarter turns and optional scatter tilts share the same angle,
-bounds and occlusion test. Scatter is a bounded, one-shot layout calculation;
-there is no physics loop. It never changes photo geometry. Lamp brightness and decorative
-film edges never enter rendered/exported pixels. `preview.ts` shares leases
-with the other review modes; `ReviewImagePool` serializes producers, cancels
-offscreen requests and trims idle images to its 64 MiB target. `desk.ts` bounds
-local layout preferences to eight trays. Review marks and layouts are separate
-from editor history, sidecars and file output. See `WINDOWS_LIGHTTABLE_DESK.md`.
-The Windows theme retains neutral grey panels and warm-gold control emphasis while
-retaining the editor's neutral photo surround and existing layout metrics.
-Lightbox diffusion and falloff are static CSS backgrounds below the photos;
-neither the theme nor lighting backgrounds enter native rendered pixels.
-
 ### 7.8 Export
 
 - **A recipe** is format, depth, colour space, long edge, naming and folder

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeSidecar, encodeSidecar, newSidecar } from '@shared/sidecar';
-import { decodeEditHistory, historyEntry } from '@shared/editHistory';
 import type { HelloResult } from '@shared/protocol';
 import type * as SessionModule from './session';
 const fake = vi.hoisted(() => ({ changes: vi.fn(), load: vi.fn(), save: vi.fn(), open: vi.fn(), close: vi.fn(), confirm: vi.fn(), invalidate: vi.fn() }));
@@ -31,22 +30,6 @@ beforeEach(async () => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe('external edit journal', () => {
-  it('persists undo and redo in the same recipe write and restores them on reopening', async () => {
-    session.beginGesture(); session.setAdjustments((a) => ({ ...a, exposure: 1.5 }));
-    await session.flushSave();
-    const disk = fake.save.mock.calls.at(-1)?.[1];
-    expect(disk.spektraHistory.undo).toHaveLength(1);
-    expect(historyEntry(decodeSidecar(disk), null)).toEqual(historyEntry(state().sidecar, null));
-    expect(decodeEditHistory(disk.spektraHistory, historyEntry(decodeSidecar(disk), null)).undo).toHaveLength(1);
-    fake.load.mockResolvedValue(disk);
-    await session.select(other);
-    expect(state().undo).toHaveLength(1);
-    session.undo(); expect(state().sidecar.adjustments.exposure).toBe(0);
-    await session.flushSave();
-    const afterUndo = fake.save.mock.calls.at(-1)?.[1];
-    expect(afterUndo.spektraHistory.redo).toHaveLength(1);
-    expect(encodeSidecar(decodeSidecar(afterUndo))).not.toHaveProperty('spektraHistory');
-  });
   it('takes the first journal as a cursor, then refreshes a clean selected frame and invalidates other thumbnails', async () => {
     await session.pollAgentChanges(); expect(fake.load).not.toHaveBeenCalled(); expect(fake.open).not.toHaveBeenCalled();
     const next = saved(); next.adjustments.exposure = 1.75;

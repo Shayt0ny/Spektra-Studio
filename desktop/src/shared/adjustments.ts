@@ -12,8 +12,6 @@
 //   → black/white point → saturation → colour balance → curves → vignette
 
 import { clamp } from './params.ts';
-import {decodeLocalMasks,maskCoverage,rasterizeBrush,type LocalMask} from './localMasks.ts';
-import { applyDetail, decodeDetail, detailActive, type ColorDetail } from './colorDetail';
 
 export interface ColorZone {
   hue: number;
@@ -38,8 +36,7 @@ export type CurveChannel = 'rgb' | 'luma' | 'red' | 'green' | 'blue';
 export const CURVE_CHANNELS: CurveChannel[] = ['rgb', 'luma', 'red', 'green', 'blue'];
 export type CurveSet = Record<CurveChannel, Curve>;
 
-export interface Adjustments extends ColorDetail {
-  localMasks?: LocalMask[];
+export interface Adjustments {
   enabled: boolean;
   temperature: number;
   tint: number;
@@ -94,8 +91,6 @@ export const zoneNeutral = (z: ColorZone) => z.saturation === 0 && z.luminance =
 
 export function isNeutral(a: Adjustments): boolean {
   return (
-    !detailActive(a) &&
-    !(a.localMasks?.some(m=>m.enabled&&m.amount>0&&Object.values(m.adjustments).some(v=>v!==0))) &&
     a.temperature === 0 &&
     a.tint === 0 &&
     a.exposure === 0 &&
@@ -394,21 +389,13 @@ export function layer2Pixel(
 
 /** The whole layer on an RGBA float buffer (0…1), in place — a print, before geometry. */
 export function applyLayer2(data: Float32Array, width: number, height: number, a: Adjustments, midGrey: number): void {
-  if(a.enabled && detailActive(a)) {
-    applyLayer2(data,width,height,{...a,hsl:undefined,texture:undefined,clarity:undefined,localMasks:[]},midGrey);
-    applyDetail(data,width,height,a);
-    if(a.localMasks?.length)applyLayer2(data,width,height,{...ADJUSTMENTS_DEFAULT,localMasks:a.localMasks},midGrey);
-    return;
-  }
   const u = layer2Uniforms(a, midGrey);
   if (!u.enabled) return;
   const tables = u.curvesActive ? curveTables(a.curves) : null;
-  const masks=(a.localMasks??[]).filter(m=>m.enabled&&m.amount>0).map(m=>({m,u:layer2Uniforms({...ADJUSTMENTS_DEFAULT,...m.adjustments},midGrey),r:m.kind==='brush'?rasterizeBrush(m,width/height):undefined}));
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      let [r, g, b] = layer2Pixel([data[i]!, data[i + 1]!, data[i + 2]!], u, tables, (x + 0.5) / width, (y + 0.5) / height);
-      for(const{m,u:mu,r:mr}of masks){const cover=maskCoverage(m,{x:(x+.5)/width,y:(y+.5)/height},mr);if(cover>0){const local=layer2Tone([r,g,b],mu);r+= (sat(local[0])-r)*cover;g+=(sat(local[1])-g)*cover;b+=(sat(local[2])-b)*cover;}}
+      const [r, g, b] = layer2Pixel([data[i]!, data[i + 1]!, data[i + 2]!], u, tables, (x + 0.5) / width, (y + 0.5) / height);
       data[i] = r;
       data[i + 1] = g;
       data[i + 2] = b;
@@ -445,8 +432,6 @@ export function decodeAdjustments(raw: unknown): Adjustments {
   const cb = obj(o.colorBalance);
   const v = obj(o.vignette);
   return {
-    ...(o.localMasks===undefined?{}:{localMasks:decodeLocalMasks(o.localMasks)}),
-    ...decodeDetail(o),
     enabled: typeof o.enabled === 'boolean' ? o.enabled : true,
     temperature: num(o.temperature, d.temperature),
     tint: num(o.tint, d.tint),

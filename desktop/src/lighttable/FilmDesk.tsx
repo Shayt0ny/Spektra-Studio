@@ -9,7 +9,8 @@ import { lighttableStore, reviewKey, useLighttable } from './review';
 import { useImage, useViewport, type Images } from './preview';
 import type { ReviewImage } from './images';
 import { FilmLoupe } from './FilmLoupe';
-import { DESK_BATCH, deskFit, deskLayout, deskPage, deskScatter, deskScope, deskZoom, filmAngle, filmBounds, filmContains, filmPoint, readDesk, writeDesk, type DeskState, type FilmPiece } from './desk';
+import { DESK_BATCH, deskFit, deskLayout, deskPage, deskScope, deskZoom, filmAngle, filmBounds, filmContains, filmPoint, readDesk, writeDesk, type DeskState, type FilmPiece } from './desk';
+import {arrangeFilms,flowStrip,joinFilms,splitFilms,moveFilms,stripMembers,stripBox,transformFilms,scatterFilms,type Arrangement} from './filmStrips';
 import './desk.css';
 
 export interface DeskHandle { key(key: string): boolean }
@@ -32,7 +33,7 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
     let saved: DeskState | null = null, error = '';
     try { saved = readDesk(localStorage, scope); } catch { error = tz('Table layout could not be restored.', '未能恢复台面布局。'); }
     if (saved?.pieces.map((p) => p.key).join('\0') !== keys.join('\0')) saved = null;
-    return { state: saved ?? { pieces: deskLayout(keys), view: { x: 0, y: 0, scale: 1 }, lamp: true, brightness: 1, arranged: false }, saved: !!saved, error };
+    return { state: saved ?? { pieces: arrangeFilms(deskLayout(keys),'mixed'), view: { x: 0, y: 0, scale: 1 }, lamp: true, brightness: 1, arranged: true,toolsOpen:false }, saved: !!saved, error };
   });
   const [state, setState] = useState<DeskState>(initial.state), latest = useRef(state), raf = useRef(0);
   const [error, setError] = useState(initial.error), [loupe, setLoupe] = useState(false), [magnification, setMagnification] = useState(3);
@@ -45,7 +46,10 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null), pointerRaf = useRef(0), pendingPointer = useRef<typeof pointer>(null);
   const { ref, size } = useViewport(), area = useRef(size); area.current = size;
   const current = useLighttable((s) => s.current), autoFit = useRef(!initial.saved);
-  const drag = useRef<{ id: number; x: number; y: number; state: DeskState; key?: string } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; state: DeskState; keys?: string[] } | null>(null);
+  const [dragging,setDragging]=useState(false),[multiple,setMultiple]=useState<string[]>([]),[developedKey,setDevelopedKey]=useState('');
+  const pendingAspects=useRef(new Map<string,number>());
+  const measuredAspects=useRef(new Set<string>());
   const update = useCallback((next: DeskState) => {
     latest.current = next;
     if (!raf.current) raf.current = requestAnimationFrame(() => { raf.current = 0; setState(latest.current); });
@@ -78,35 +82,57 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
     return true;
   } }));
   const onAspect = useCallback((key: string, aspect: number) => {
+    if(drag.current){pendingAspects.current.set(key,aspect);return;}
+    measuredAspects.current.add(key);
     const s = latest.current, piece = s.pieces.find((p) => p.key === key);
-    if (!piece || Math.abs(piece.aspect - aspect) < .001) return;
+    if (!piece) return;
+    const ready=measuredAspects.current.size>=keys.length;
+    if(Math.abs(piece.aspect-aspect)<.001){if(ready&&autoFit.current)update({...s,view:deskFit(s.pieces,area.current)});return;}
     const aspects = Object.fromEntries(s.pieces.map((p) => [p.key, p.key === key ? aspect : p.aspect]));
-    const pieces = s.arranged ? s.pieces.map((p) => p.key === key ? { ...p, aspect } : p) : deskLayout(keys, aspects);
-    update({ ...s, pieces, view: autoFit.current ? deskFit(pieces, area.current) : s.view });
+    let pieces = s.arranged ? s.pieces.map((p) => {if(p.key!==key)return p;const width=Math.max(48,Math.min(1200,p.width/p.aspect*aspect));return {...p,aspect,width,x:p.x+(p.width-width)/2};}) : deskLayout(keys, aspects);
+    if(piece.strip){const box=stripBox(s.pieces.filter(p=>p.strip===piece.strip));pieces=flowStrip(pieces,piece.strip,piece.width/piece.aspect,{x:box.cx,y:box.cy});}
+    update({ ...s, pieces, view: autoFit.current&&ready ? deskFit(pieces, area.current) : s.view });
   }, [keys, update]);
   const selectedKey = files.find((f) => f.path === current); const selected = selectedKey ? reviewKey(selectedKey) : '';
-  const changePiece = (rotate: boolean, factor = 1) => {
-    const s = latest.current; autoFit.current = false;
-    update({ ...s, arranged: true, pieces: s.pieces.map((p) => p.key !== selected ? p : rotate ? { ...p, turn: (p.turn + 1) % 4 } :
-      { ...p, width: Math.max(48, Math.min(1200, p.width * factor)) }) });
+  const chosen=multiple.includes(selected)?multiple:selected?[selected]:[];
+  useEffect(()=>{
+    if(!developed){setDevelopedKey('');return;}if(dragging)return;
+    const timer=setTimeout(()=>setDevelopedKey(selected),200);return()=>clearTimeout(timer);
+  },[selected,developed,dragging]);
+  const changePiece = (rotate:boolean,factor=1)=>{
+    const s=latest.current;autoFit.current=false;update({...s,arranged:true,pieces:transformFilms(s.pieces,selected,rotate,factor)});
   };
+  const arrange=(mode:Arrangement)=>{autoFit.current=true;const pieces=arrangeFilms(latest.current.pieces,mode);update({...latest.current,pieces,arranged:true,view:deskFit(pieces,area.current)});};
+  const finishDrag=()=>{drag.current=null;setDragging(false);const pending=[...pendingAspects.current];pendingAspects.current.clear();for(const [key,aspect] of pending)onAspect(key,aspect);};
   const world = pointer ? { x: (pointer.x - state.view.x) / state.view.scale, y: (pointer.y - state.view.y) / state.view.scale } : null;
-  const ordered = [...state.pieces.filter((p) => p.key !== selected), ...state.pieces.filter((p) => p.key === selected)];
+  const raised=new Set(stripMembers(state.pieces,chosen));
+  const ordered = [...state.pieces.filter(p=>!raised.has(p.key)),...state.pieces.filter(p=>raised.has(p.key))];
   const hit = loupe && world ? ordered.toReversed().find((piece) => filmContains(piece, world)) : undefined;
   const hovered = hit && world ? { piece: hit, point: filmPoint(hit, world) } : undefined;
   const hoveredFile = hovered?.point ? files.find((f) => reviewKey(f) === hovered.piece.key) ?? null : null;
   const brightness = state.lamp ? state.brightness : .12;
   return <div className="lt-desk" data-testid="lt-desk" data-lamp={state.lamp} data-scale={state.view.scale}>
-    <div className="lt-desk-controls">
+    <div className="lt-desk-bar">
+      <button className="lt-button" data-testid="lt-desk-tools-toggle" aria-expanded={!!state.toolsOpen} onClick={()=>update({...latest.current,toolsOpen:!latest.current.toolsOpen})}>{state.toolsOpen?'▾':'▸'} {tz('Table tools','台面工具')}</button>
+      <span className="caption">{developed?tz('Developed preview','显影预览'):tz('Fast originals','普通预览')}</span>
+      <button className="lt-button" onClick={fit}>{tz('Fit table','查看全台')}</button>
+    </div>
+    <div className="lt-desk-controls" hidden={!state.toolsOpen} data-testid="lt-desk-tools">
       <div className="lt-desk-control-group">
         <button className={`lt-button ${state.lamp ? 'on' : ''}`} data-testid="lt-desk-lamp" aria-pressed={state.lamp} onClick={toggleLamp}>{tz('Lamp', '台灯')} <kbd>L</kbd></button>
         <label>{tz('Brightness', '亮度')} <input aria-label={tz('Table brightness', '台灯亮度')} type="range" min="30" max="150" step="5" value={Math.round(state.brightness * 100)} onChange={(e) => update({ ...latest.current, brightness: Number(e.target.value) / 100 })} /><span>{Math.round(state.brightness * 100)}%</span></label>
         <button className="lt-button" onClick={() => update({ ...latest.current, brightness: 1, lamp: true })}>{tz('Neutral 100%', '标准 100%')}</button>
         <label><input type="checkbox" data-testid="lt-desk-realistic" checked={!!state.realistic} onChange={e=>{const next={...latest.current,realistic:e.target.checked};latest.current=next;setState(next);}}/>{tz('Realistic lightbox','拟真灯箱')}</label>
       </div>
+      <div className="lt-desk-control-group lt-desk-layout-tools">
+        <span>{tz('Layout','摆放')}</span>{(['single','strips','mixed'] as const).map((mode,i)=><button className="lt-button" key={mode} data-testid={`lt-desk-arrange-${mode}`} onClick={()=>arrange(mode)}>{[tz('Singles','单张'),tz('Film strips','胶片条'),tz('Mixed','混合摆放')][i]}</button>)}
+        <button className="lt-button" data-testid="lt-desk-join" disabled={chosen.length<2} onClick={()=>{const pieces=joinFilms(latest.current.pieces,chosen);autoFit.current=true;update({...latest.current,pieces,arranged:true,view:deskFit(pieces,area.current)});}}>{tz('Join selected','连接所选')}</button>
+        <button className="lt-button" data-testid="lt-desk-split" disabled={!state.pieces.find(p=>p.key===selected)?.strip} onClick={()=>update({...latest.current,pieces:splitFilms(latest.current.pieces,selected),arranged:true})}>{tz('Split strip','拆开当前条')}</button>
+        <span className="caption">{tz('Ctrl-click to select several','Ctrl 点选多张')}</span>
+      </div>
       <div className="lt-desk-control-group">
         <button className="lt-button" data-testid="lt-desk-scatter" onClick={() => {
-          autoFit.current = true; const pieces = deskScatter(latest.current.pieces, crypto.getRandomValues(new Uint32Array(1))[0]!);
+          autoFit.current = true; const pieces = scatterFilms(latest.current.pieces, crypto.getRandomValues(new Uint32Array(1))[0]!);
           update({ ...latest.current, pieces, arranged: true, view: deskFit(pieces, area.current) });
         }}>{tz('Scatter films', '散落胶片')}</button>
         <button className="lt-button" data-testid="lt-desk-tile" onClick={() => { autoFit.current = true; const pieces = deskLayout(keys, Object.fromEntries(latest.current.pieces.map((p) => [p.key, p.aspect]))); update({ ...latest.current, pieces, arranged: false, view: deskFit(pieces, area.current) }); }}>{tz('Tile films', '平铺胶片')}</button>
@@ -132,8 +158,14 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         const key = (e.target as HTMLElement).closest<HTMLElement>('[data-film-key]')?.dataset.filmKey;
-        const file = key ? files.find((f) => reviewKey(f) === key) : null; if (file) lighttableStore.getState().choose(file.path);
-        autoFit.current = false; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, state: latest.current, key };
+        const file=key?files.find(f=>reviewKey(f)===key):null;
+        if(key&&(e.ctrlKey||e.metaKey)){
+          const next=chosen.includes(key)?chosen.filter(k=>k!==key):[...chosen,key];
+          if(next.length){setMultiple(next);if(!next.includes(selected)){const first=files.find(f=>reviewKey(f)===next[0]);if(first)lighttableStore.getState().choose(first.path);}}e.preventDefault();return;
+        }
+        const moving=key?stripMembers(latest.current.pieces,chosen.includes(key)?chosen:[key]):undefined;
+        if(file){if(!chosen.includes(key!))setMultiple([key!]);lighttableStore.getState().choose(file.path);}
+        autoFit.current=false;setDragging(true);drag.current={id:e.pointerId,x:e.clientX,y:e.clientY,state:latest.current,keys:moving};
         e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault();
       }}
       onPointerMove={(e) => {
@@ -143,22 +175,21 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
         }
         const d = drag.current; if (!d || d.id !== e.pointerId) return;
         const dx = e.clientX - d.x, dy = e.clientY - d.y, s = d.state;
-        if (d.key) update({ ...latest.current, arranged: true, pieces: latest.current.pieces.map((p) => {
-          const before = s.pieces.find((old) => old.key === p.key); return p.key === d.key && before ? { ...p, x: Math.max(-100000, Math.min(100000, before.x + dx / s.view.scale)), y: Math.max(-100000, Math.min(100000, before.y + dy / s.view.scale)) } : p;
-        }) });
+        if (d.keys) update({...latest.current,arranged:true,pieces:moveFilms(s.pieces,d.keys,dx/s.view.scale,dy/s.view.scale)});
         else update({ ...latest.current, view: { ...s.view, x: s.view.x + dx, y: s.view.y + dy } });
-      }} onPointerUp={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}
+      }} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}
       onPointerLeave={() => { if (!drag.current) { cancelAnimationFrame(pointerRaf.current); pointerRaf.current = 0; if (!loupe) { pendingPointer.current = null; setPointer(null); } } }}>
       <div className="lt-desk-rim" aria-hidden="true"><span>SPEKTRA STUDIO <i className={state.lamp ? 'is-lit' : ''} /></span><span>DIFFUSED LIGHT / {state.lamp ? `${Math.round(state.brightness * 100)}%` : 'OFF'}</span></div>
       <div className="lt-desk-world" style={{ transform: `translate(${state.view.x}px,${state.view.y}px) scale(${state.view.scale})` }}>
+        {[...new Set(ordered.map(p=>p.strip).filter((v):v is string=>!!v))].map(id=>{const members=ordered.filter(p=>p.strip===id),box=stripBox(members),w=members.reduce((n,p)=>n+p.width+24,0)-members.length+1,h=members[0]!.width/members[0]!.aspect+48;return <div key={id} className="lt-film-strip-shadow" style={{width:w,height:h,transform:`translate(${box.cx-w/2}px,${box.cy-h/2}px) rotate(${filmAngle(members[0]!)}deg)`}} aria-hidden="true"/>;})}
         {ordered.map((piece) => {
           const b = filmBounds(piece), v = state.view, visible = (b.x + b.width) * v.scale + v.x >= -40 && b.x * v.scale + v.x <= size.width + 40 && (b.y + b.height) * v.scale + v.y >= -40 && b.y * v.scale + v.y <= size.height + 40;
           const file = files.find((f) => reviewKey(f) === piece.key);
-          return visible && file ? <Film key={piece.key} piece={piece} file={file} number={start + files.indexOf(file) + 1} active={piece.key === selected} developed={developed && piece.key === selected} images={images} brightness={brightness} onAspect={onAspect} onImage={onImage} /> : null;
+          return visible && file ? <Film key={piece.key} piece={piece} file={file} number={start + files.indexOf(file) + 1} active={chosen.includes(piece.key)} developed={developed && piece.key === developedKey} images={images} brightness={brightness} onAspect={onAspect} onImage={onImage} /> : null;
         })}
       </div>
-      {loupe && pointer && <FilmLoupe file={hoveredFile} pointer={pointer} area={size} images={images} developed={developed && hoveredFile?.path === current} state={state} ordered={ordered} textures={textures.current} revision={textureRevision} magnification={magnification} diameter={diameter} refractive={refractive} />}
-      <div className="lt-desk-help">{tz('Drag film to arrange · drag table to pan · wheel to zoom · double-click film to inspect', '拖动胶片摆放 · 拖动台面平移 · 滚轮缩放 · 双击胶片查看单张')}</div>
+      {loupe && pointer && <FilmLoupe file={hoveredFile} pointer={pointer} area={size} images={images} developed={developed && !!hoveredFile && reviewKey(hoveredFile)===developedKey} state={state} ordered={ordered} textures={textures.current} revision={textureRevision} magnification={magnification} diameter={diameter} refractive={refractive} />}
+      <div className="lt-desk-help">{tz('Drag film to arrange · drag table to pan · wheel to zoom · double-click film to inspect', '拖动单张或整条胶片 · Ctrl 多选 · 滚轮缩放 · I 纯净观片')}</div>
     </div>
     <div className="lt-desk-bottom"><span>{tz('Film edges and lamp are display only. Original colors: lamp 100%.', '胶片边框和台灯仅用于观片；查看原色请设为标准 100%。')}</span>
       <div><button className="lt-button" disabled={page === 0} onClick={() => onPage(-1)}>← {tz('Previous tray', '上一台')}</button><span data-testid="lt-desk-page">{page + 1} / {pages} · {files.length} {tz('films', '张')}</span><button className="lt-button" disabled={page + 1 >= pages} onClick={() => onPage(1)}>{tz('Next tray', '下一台')} →</button></div>
@@ -169,7 +200,8 @@ const DeskPage = forwardRef<DeskHandle, PageProps>(function DeskPage({ files, im
 const Film = memo(function Film({ file, piece, number, images, active, developed, brightness, onAspect, onImage }: {
   file: FileEntry; piece: FilmPiece; number: number; images: Images; active: boolean; developed: boolean; brightness: number; onAspect(key: string, aspect: number): void; onImage(key: string, image: ReviewImage | null): void;
 }) {
-  const result = useImage(file, developed ? 2048 : 384, developed, images, developed ? 10 : 0), canvas = useRef<HTMLCanvasElement>(null);
+  const camera=useImage(file,384,false,images,active?5:0),detail=useImage(developed?file:null,2048,true,images,-1),canvas=useRef<HTMLCanvasElement>(null);
+  const result=detail?.image?detail:camera;
   const mark = useLighttable((s) => s.marks[piece.key] ?? 'unmarked'), image = result?.image;
   useLayoutEffect(() => {
     if (!image || !canvas.current) return;
@@ -177,16 +209,15 @@ const Film = memo(function Film({ file, piece, number, images, active, developed
     onAspect(piece.key, image.width / image.height); onImage(piece.key, image);
     return () => { onImage(piece.key, null); node.width = 1; node.height = 1; };
   }, [image, onAspect, onImage, piece.key]);
-  return <button className={`lt-film ${active ? 'is-current' : ''}`} data-testid="lt-film" data-film-key={piece.key} data-path={file.path} data-x={piece.x} data-y={piece.y} data-turn={piece.turn} data-tilt={piece.tilt ?? 0} data-width={piece.width} data-preview-kind={image?.kind ?? 'loading'}
-    aria-pressed={active} aria-label={file.name} title={file.name}
+  return <button className={`lt-film ${piece.strip?'in-strip':''} ${active ? 'is-current' : ''}`} data-testid="lt-film" data-strip={piece.strip??''} data-film-key={piece.key} data-path={file.path} data-x={piece.x} data-y={piece.y} data-turn={piece.turn} data-tilt={piece.tilt ?? 0} data-width={piece.width} data-preview-kind={image?.kind ?? 'loading'}
+    aria-pressed={active} aria-label={file.name} title={developed&&detail?.error?`${file.name} · ${tz('Developed preview unavailable; showing the original.','显影预览暂不可用，已显示普通预览。')}`:file.name}
     style={{ width: piece.width + 24, height: piece.width / piece.aspect + 48, transform: `translate(${piece.x}px,${piece.y}px) rotate(${filmAngle(piece)}deg)` }}
-    onClick={() => lighttableStore.getState().choose(file.path)} onDoubleClick={() => { lighttableStore.getState().choose(file.path); lighttableStore.getState().setMode('single'); }}>
+    onClick={(e) => {if(!e.ctrlKey&&!e.metaKey)lighttableStore.getState().choose(file.path);}} onDoubleClick={() => { lighttableStore.getState().choose(file.path); lighttableStore.getState().setMode('single'); }}>
     <span className="lt-film-perfs top" aria-hidden="true" style={{ opacity: Math.min(1, brightness) }} /><span className="lt-film-edge top"><b>SPEKTRA</b><span>{String(number).padStart(2, '0')} ▸</span></span>
     <div className="lt-film-image" style={{ height: piece.width / piece.aspect }}>
       {image ? <canvas ref={canvas} style={{ filter: brightness === 1 ? undefined : `brightness(${brightness})` }} /> : <span title={result?.error}>{result?.error ? tz('No preview · open in editor', '无预览 · 可进入编辑器') : tz('Loading…', '加载中…')}</span>}
-      <span className="lt-film-source">{developed ? tz('DEVELOPED', '显影') : tz('ORIGINAL', '原片')}</span>
-      {mark !== 'unmarked' && <span className={`lt-film-mark ${mark}`}>{mark === 'keep' ? '✓' : '×'}</span>}
     </div>
+      {mark !== 'unmarked' && <span className={`lt-film-mark ${mark}`}>{mark === 'keep' ? '✓' : '×'}</span>}
     <span className="lt-film-edge bottom"><span>{file.name}</span><b>{String(number).padStart(2, '0')}A</b></span><span className="lt-film-perfs bottom" aria-hidden="true" style={{ opacity: Math.min(1, brightness) }} />
   </button>;
 });

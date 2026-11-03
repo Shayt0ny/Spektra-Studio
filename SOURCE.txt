@@ -1,0 +1,6 @@
+Complete corresponding source: Spektra-Studio-1.0.10-win.1-Source.zip
+SHA256: 0b06b8532baa713f1f3e7084d3d39cf1a9311c6955340977540ccc8ac2d633de
+
+Original spektrafilm engine: Andrea Volpato. Native C++ / macOS: JamesQiu2005.
+Windows adaptation and experimental material configurations: Shayt0ny.
+Photo-All workflow reference: YZH2006517. GPL/CC BY-SA and other notices under host/licenses.

@@ -37,41 +37,6 @@ void check_rgb(gpu::Gpu* gpu,const Image& packed,view::Request q,const Json& tra
   }
  }
 }
-void film_strength_tests(const std::string& resources){
- std::string e;
- std::unique_ptr<spk_engine,decltype(&spk_engine_destroy)> engine(spk_engine_create(resources.c_str(),nullptr),spk_engine_destroy);
- check(bool(engine),spk_last_error(nullptr));
- std::vector<float> pixels(23*17*3);for(size_t i=0;i<pixels.size();++i)pixels[i]=.015f+float(i%53)/97;
- spk_image image{pixels.data(),23,17,3};
- std::unique_ptr<spk_session,decltype(&spk_session_release)> s(spk_open(engine.get(),&image,"{\"grain_active\":false,\"halation_active\":false,\"glare_active\":false,\"auto_exposure\":false,\"input_color_space\":\"ProPhoto RGB\",\"input_cctf_decoding\":false}",nullptr),spk_session_release);
- check(bool(s),spk_last_error(engine.get()));
- view::Request q;q.target_space="ProPhoto RGB";q.rgba16=true;q.adjustments=json("{\"enabled\":false}");
- view::Result full,zero,mixed,source,again;
- check(view::render(s.get(),q,full,e),e);
- q.film_strength=0;check(view::render(s.get(),q,zero,e),e);
- q.film_strength=.2;check(view::render(s.get(),q,mixed,e),e);
- q.no_film=true;check(view::render(s.get(),q,source,e),e);
- check(zero.pixels==source.pixels,"0% changed decoded-source endpoint");
- for(size_t i=0;i<mixed.pixels.size()/2;++i)check(std::abs(double(value(mixed,i))-(.8*value(zero,i)+.2*value(full,i)))<=2,"whole-look amount is not encoded-working-space blend before grade");
- q.no_film=false;q.film_strength=1;check(view::render(s.get(),q,again,e),e);
- check(full.pixels==again.pixels,"100% default path changed after strength edit");
- std::puts("ok whole-film 0/20/100% working-space endpoints");
-}
-void detail_tests(const std::string& resources){
- std::string e;std::unique_ptr<gpu::Gpu> gpu(gpu::Gpu::create_vulkan(resources+"/vulkan",e));check(bool(gpu),e);
- std::vector<uint16_t> red={65535,0,0,65535};Image input;input.w=1;input.h=1;input.c=2;input.buf=gpu->upload(red.data(),8,e);check(input.valid(),e);
- Json identity=json("{\"source_color_space\":\"ProPhoto RGB\",\"target_color_space\":\"ProPhoto RGB\"}");
- view::Request q;q.rgba16=true;q.target_space="ProPhoto RGB";q.adjustments=json("{\"hsl\":{\"red\":{\"hue\":30,\"saturation\":-50,\"luminance\":0}}}");view::Result out;
- check(view::process(gpu.get(),input,q,identity,nullptr,0,out,e),e);
- check(std::abs(int(value(out,0))-49151)<=1&&std::abs(int(value(out,1))-32768)<=1&&std::abs(int(value(out,2))-16384)<=1,"HSL red -> orange numeric oracle failed");
- q.adjustments.set("enabled",Json(false));check(view::process(gpu.get(),input,q,identity,nullptr,0,out,e),e);
- check(value(out,0)==65535&&value(out,1)==0&&value(out,2)==0,"Post-Dev bypass retained HSL");
- std::vector<uint16_t> pattern(64*64*4);for(size_t i=0;i<64*64;i++){pattern[4*i]=pattern[4*i+1]=pattern[4*i+2]=i%2?39321:26214;pattern[4*i+3]=65535;}
- input.w=input.h=64;input.buf=gpu->upload(pattern.data(),pattern.size()*2,e);check(input.valid(),e);
- for(int amount:{-100,100}) {q.adjustments=Json::object();q.adjustments.set("texture",Json(double(amount)));check(view::process(gpu.get(),input,q,identity,nullptr,0,out,e),e);
-  check(amount>0?value(out,4)>39321:value(out,4)<39321,"texture did not enhance/soften local detail");}
- std::puts("ok HSL scalar oracle, grey/bypass and bounded texture enhancement/softening");
-}
 void cineon_tests(const std::string& resources){
  std::string e;std::unique_ptr<gpu::Gpu> gpu(gpu::Gpu::create_vulkan(resources+"/vulkan",e));check(bool(gpu),e);
  constexpr uint32_t n=1024;std::vector<float> input(n*3),actual(n*3);std::array<float,42> p{};
@@ -437,4 +402,4 @@ void residency_tests(const std::string& resources){
  std::puts("view residency: exact random pixels, aliases, rollback, automatic restore, RNG continuation and suspended-close cleanup passed");
 }
 }
-int main(int argc,char** argv){try{check(argc==2,"resource directory required");source_detail_tests(argv[1]);minification_tests(argv[1]);process_tests(argv[1]);cache_tests(argv[1]);proof_tests(argv[1]);film_strength_tests(argv[1]);detail_tests(argv[1]);cineon_tests(argv[1]);residency_tests(argv[1]);return 0;}catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}
+int main(int argc,char** argv){try{check(argc==2,"resource directory required");source_detail_tests(argv[1]);minification_tests(argv[1]);process_tests(argv[1]);cache_tests(argv[1]);proof_tests(argv[1]);cineon_tests(argv[1]);residency_tests(argv[1]);return 0;}catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}

@@ -15,16 +15,10 @@ import {
   straightened,
   straightenAngle,
   turned,
-  withAspect,centre,
   uniform,
 } from './geometry';
 
 const image = { width: 3000, height: 2000 };
-it('round-trips portrait/landscape around the chosen off-centre subject without progressive shrink',()=>{
-  const g=withAspect({...GEOMETRY_DEFAULT,crop:{x:.1,y:.08,width:.65,height:.7}},'r3x2',image),c=centre(g);
-  let next=g;for(let i=0;i<4;i++){next=withAspect(next,'r2x3',image);expect(centre(next).x).toBeCloseTo(c.x,5);expect(centre(next).y).toBeCloseTo(c.y,5);next=withAspect(next,'r3x2',image);}
-  expect(next.crop.width).toBeCloseTo(g.crop.width,8);expect(next.crop.height).toBeCloseTo(g.crop.height,8);
-});
 function rng(seed: number) {
   let s = seed;
   return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);

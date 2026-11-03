@@ -495,7 +495,6 @@ double Pipeline::overscan_gate_long_mm() const {
     // A half-frame pair: the input carries both pictures, the second one
     // advance along, so its long edge is the gate and the advance together.
     if (f && params_.film_render.overscan.pair) return f->along + kPairAdvanceMM;
-    if(f && params_.film_render.overscan.follow_crop)return f->across*(f->along>=f->across?overscan_crop_aspect_:1.);
     return f ? std::max(f->across, f->along) : params_.camera.film_format_mm;
 }
 
@@ -515,12 +514,12 @@ bool Pipeline::full_output_size(uint32_t w, uint32_t h, uint32_t& out_w, uint32_
     // Deterministic CPU layout only. Restore the current tier on every exit.
     auto saved = std::move(overscan_);
     const auto source = source_long_edge_, full = frame_long_edge_;
-    const auto pitch = pixel_size_um_, crop_aspect=overscan_crop_aspect_;
+    const auto pitch = pixel_size_um_;
     struct Restore {
-        Pipeline* p; OverscanLayout& layout; uint32_t source, full; double pitch,crop_aspect;
+        Pipeline* p; OverscanLayout& layout; uint32_t source, full; double pitch;
         ~Restore() { p->overscan_ = std::move(layout); p->source_long_edge_ = source;
-            p->frame_long_edge_ = full; p->pixel_size_um_ = pitch;p->overscan_crop_aspect_=crop_aspect; }
-    } restore{this, saved, source, full, pitch,crop_aspect};
+            p->frame_long_edge_ = full; p->pixel_size_um_ = pitch; }
+    } restore{this, saved, source, full, pitch};
     set_source_shape(w, h, w, h);
     if (!overscan_layout(out_w, out_h, error)) return false;
     out_w = overscan_.canvas_w; out_h = overscan_.canvas_h;
@@ -564,7 +563,7 @@ bool Pipeline::overscan_layout(uint32_t frame_w, uint32_t frame_h, std::string& 
         const double gate_short = pair ? fmt->across : std::min(fmt->along, fmt->across);
         const double frame_long = std::max(frame_w, frame_h), frame_short = std::max(1u, std::min(frame_w, frame_h));
         const double ratio = (frame_long / frame_short) / (gate_long / gate_short);
-        if (!(o.follow_crop&&!pair) && std::fabs(ratio - 1.0) > 0.05) {
+        if (std::fabs(ratio - 1.0) > 0.05) {
             char buf[160];
             std::snprintf(buf, sizeof buf, "overscan: a %u x %u frame is not the %s gate's shape (%g x %g); crop the picture to the gate first",
                           frame_w, frame_h, fmt->name, gate_long, gate_short);
@@ -582,8 +581,7 @@ bool Pipeline::overscan_layout(uint32_t frame_w, uint32_t frame_h, std::string& 
     // The film runs along the image axis whose size is *not* the format's
     // across-the-film size: a portrait 135 frame, a landscape 645, a portrait
     // 6x7 all run vertically. Square frames run horizontally.
-    L.vertical = o.follow_crop&&!o.pair ? (std::fabs(img_w-img_h)>1e-6 && (fmt->along>=fmt->across?img_h>img_w:img_w>img_h))
-        : std::fabs(img_w - fmt->across) < std::fabs(img_h - fmt->across) && std::fabs(img_w - img_h) > 1e-6;
+    L.vertical = std::fabs(img_w - fmt->across) < std::fabs(img_h - fmt->across) && std::fabs(img_w - img_h) > 1e-6;
     L.gate_along = L.vertical ? img_h : img_w;
     if (o.pair) {
         // Held level the two frames sit side by side; with the camera turned
@@ -2259,25 +2257,6 @@ std::string Pipeline::overscan_geometry_json() const {
 // ---------------------------------------------------------------------------
 // The nodes.
 // ---------------------------------------------------------------------------
-bool Pipeline::blend_view_source(const Image& source, const Image& print, double amount, Image& out, std::string& error) {
-    if (amount == 1.0) { out = print; return true; }
-    if (!std::isfinite(amount) || amount < 0 || amount > 1 || print.c != 2) { error = "view: invalid film strength"; return false; }
-    Image base;
-    if (!node_geometry(source, base, error)) return false;
-    const bool framed = overscan_wanted();
-    if (framed && (!overscan_.valid || print.w != overscan_.canvas_w || print.h != overscan_.canvas_h)) {
-        error = "view: film strength gate does not match print"; return false;
-    }
-    if (!framed && (base.w != print.w || base.h != print.h)) { error = "view: film strength source size mismatch"; return false; }
-    std::vector<float> p; overscan_params_block(p);
-    auto pb = gpu_->upload(p.data(), p.size() * sizeof(float), error); if (!pb) return false;
-    out.w = print.w; out.h = print.h; out.c = 3; out.buf = gpu_->alloc(out.bytes(), error); if (!out.buf) return false;
-    const uint32_t meta[] = {uint32_t(print.pixels()), print.w, base.w, base.h, framed ? 1u : 0u};
-    const float strength[] = {float(amount)};
-    return gpu_->dispatch("spk_view_film_mix", {gpu::Arg::buf(base.buf), gpu::Arg::buf(pb), gpu::Arg::inline_bytes(meta, 5),
-        gpu::Arg::buf(out.buf), gpu::Arg::buf(print.buf), gpu::Arg::inline_bytes(strength, 1)}, print.pixels(), error) && gpu_->flush(error);
-}
-
 bool Pipeline::node_overscan(const Image& in, Image& out, std::string& error) {
     const DateImprintParams& di = params_.film_render.date_imprint;
     if (di.active) {

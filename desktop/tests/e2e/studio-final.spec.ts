@@ -36,7 +36,7 @@ test('square framing survives border toggles and realistic lightbox is optional 
   await page.getByTestId('film-edge-enable').click();await expect(page.getByTestId('film-edge-follow-crop')).toHaveAttribute('aria-checked','true');
   const g=await page.evaluate(()=>(window as unknown as AppWindow).__spk.sessionStore.getState().sidecar.geometry);expect(g.crop).toEqual({x:.2,y:.15,width:.4,height:.6});
   await page.getByTestId('film-edge-enable').click();expect(await page.evaluate(()=>(window as unknown as AppWindow).__spk.sessionStore.getState().sidecar.geometry.crop)).toEqual(g.crop);
-  await page.getByTestId('lighttable-button').click();const realistic=page.getByTestId('lt-desk-realistic');await expect(realistic).not.toBeChecked();
+  await page.getByTestId('lighttable-button').click();await page.getByTestId('lt-desk-tools-toggle').click();const realistic=page.getByTestId('lt-desk-realistic');await expect(realistic).not.toBeChecked();
   await realistic.check();await expect(page.getByTestId('lt-desk-surface')).toHaveClass(/is-realistic/);
   await page.screenshot({path:test.info().outputPath('optional-realistic-table.png')});
   await page.getByTestId('lt-close').click();expect(await page.evaluate(()=>(window as unknown as AppWindow).__spk.sessionStore.getState().sidecar.geometry.crop)).toEqual(g.crop);

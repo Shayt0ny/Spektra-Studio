@@ -34,7 +34,6 @@ import {
 import { settingsStore } from '../state/settings';
 import { turned } from '@shared/geometry';
 import { platform } from '../platform';
-import { lighttableStore } from '../lighttable/review';
 
 /** The Ctrl chords the menu owns; keys.ts leaves them to the menu in Tauri. */
 export const MENU_CHORDS = new Set([
@@ -61,11 +60,11 @@ export const MENU_CHORDS = new Set([
   'f11',
 ]);
 
-const item = (text: string, action: () => void, accelerator?: string, duringReview = false) => {
+const item = (text: string, action: () => void, accelerator?: string) => {
   const webKeys = webviewOwnsMenuKeys();
   return MenuItem.new({
     text: webKeys && accelerator ? `${text}\t${accelerator.replace('CmdOrCtrl', 'Ctrl')}` : text,
-    action: () => { if (!sessionStore.getState().batchExporting && (duringReview || !lighttableStore.getState().open)) action(); },
+    action: () => { if (!sessionStore.getState().batchExporting) action(); },
     accelerator: webKeys ? undefined : accelerator,
   });
 };
@@ -81,7 +80,7 @@ export async function installMenu(): Promise<void> {
       await sep(),
       await item(tz('Settings…', '设置…'), () => setPages({ settingsOpen: true }), 'CmdOrCtrl+,'),
       await sep(),
-      await item(tz('Quit', '退出'), () => void import('@tauri-apps/api/window').then((w) => w.getCurrentWindow().close()), 'CmdOrCtrl+Q', true),
+      await item(tz('Quit', '退出'), () => void import('@tauri-apps/api/window').then((w) => w.getCurrentWindow().close()), 'CmdOrCtrl+Q'),
     ],
   });
   const edit = await Submenu.new({

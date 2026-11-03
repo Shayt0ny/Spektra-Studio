@@ -1,5 +1,4 @@
 #include "view_process.hpp"
-#include "local_masks.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -97,19 +96,6 @@ bool process(gpu::Gpu* gpu,const Image& print,const Request& req,const Json& tra
         int tr=int(number(geom,"quarterTurns",0,-1000,1000));uint32_t turns=uint32_t((tr%4+4)%4),flips=(geom.at("flipH").as_bool()?1u:0u)|(geom.at("flipV").as_bool()?2u:0u);
         uint32_t w=std::max(1u,uint32_t(std::lround(cw*print.w))),h=std::max(1u,uint32_t(std::lround(ch*print.h)));
         if(turns%2)std::swap(w,h);
-        const auto masks=prepare_local_masks(a.at("localMasks"),print.w,print.h);
-        std::array<float,26> detail{}; bool has_detail=false;
-        const char* bands[]={"red","orange","yellow","green","aqua","blue","purple","magenta"};
-        if(!a.at("hsl").is_null()&&!a.at("hsl").is_object())throw std::runtime_error("view: HSL must be an object");
-        for(size_t i=0;i<8;i++){
-            const auto& b=a.at("hsl").at(bands[i]);
-            if(!b.is_null()&&!b.is_object())throw std::runtime_error("view: HSL band must be an object");
-            detail[3*i]=float(number(b,"hue",0,-30,30));
-            detail[3*i+1]=float(number(b,"saturation",0,-100,100)/100);
-            detail[3*i+2]=float(number(b,"luminance",0,-100,100)/100);
-        }
-        detail[24]=float(number(a,"texture",0,-100,100)/100);detail[25]=float(number(a,"clarity",0,-100,100)/100);
-        for(float v:detail)has_detail|=v!=0;
         // All request validation precedes any GPU operation.
         Image current=allocate(gpu,print.w,print.h,error);if(!current.valid())return false;
         {
@@ -122,14 +108,6 @@ bool process(gpu::Gpu* gpu,const Image& print,const Request& req,const Json& tra
             // Args borrow raw pointers; end their scope and release the curve
             // table only after the dispatch that uses them has completed.
         }
-        if(u[0]!=0 && has_detail){
-            Image next=allocate(gpu,current.w,current.h,error);if(!next.valid())return false;
-            auto config=gpu->upload(detail.data(),sizeof(detail),error);if(!config)return false;
-            const uint32_t dm[]={uint32_t(current.pixels()),current.w,current.h};
-            if(!gpu->dispatch("spk_view_detail",{Arg::buf(current.buf),Arg::buf(config),Arg::inline_bytes(dm,3),Arg::buf(next.buf)},current.pixels(),error)||!gpu->flush(error))return false;
-            current=std::move(next);
-        }
-        if(u[0]!=0 && !apply_local_masks(gpu,current,masks,error))return false;
         bool geometry=x!=0||y!=0||cw!=1||ch!=1||angle!=0||turns!=0||flips!=0;
         if(geometry){float p[]={float(x+cw/2),float(y+ch/2),float(cw),float(ch),float(std::cos(angle)),float(std::sin(angle)),float(print.h)/print.w};
             if(!resample(gpu,current,w,h,p,turns,flips,error))return false;}

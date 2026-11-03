@@ -5,7 +5,7 @@ export const AI_PROVIDERS={
   deepseek:{name:'DeepSeek',address:'https://api.deepseek.com',model:'deepseek-flash'},
 } as const;
 export const AI_RANGES={exposure:[-3,3],contrast:[-50,50],brightness:[-50,50],saturation:[-100,100],
-  highlights:[-100,100],shadows:[-100,100],temperature:[-100,100],tint:[-100,100],blackPoint:[-50,50],whitePoint:[-50,50]} as const;
+  highlights:[-100,100],shadows:[-100,100],temperature:[-100,100],tint:[-100,100],blackPoint:[0,50],whitePoint:[0,50]} as const;
 export type AiControl=keyof typeof AI_RANGES;
 export interface AiProposal{summary:string;adjustments:Partial<Pick<Adjustments,AiControl>>}
 export interface AiProfile{provider:AiProvider;model:string;has_key:boolean}

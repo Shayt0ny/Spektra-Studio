@@ -29,7 +29,7 @@ describe('export recipes', () => {
   });
 
   it('host formats', () => {
-    expect(DEFAULT_RECIPES.map(hostFormat)).toEqual(['jpeg', 'tiff16', 'png', 'tiff16','jpeg','jpeg','png16','webp-lossless','tiff16','tiff16']);
+    expect(DEFAULT_RECIPES.map(hostFormat)).toEqual(['jpeg', 'tiff16', 'png', 'tiff16']);
   });
 
   it('reads a hand-edited file leniently', () => {
@@ -56,10 +56,4 @@ it('restores a previously changed built-in without losing its custom settings', 
   const restored = decodeRecipes([{ ...DEFAULT_RECIPES[0], format: 'png', colorSpace: 'sRGB' }]);
   expect(restored.find((r) => r.id === 'jpeg-p3')).toEqual(DEFAULT_RECIPES[0]);
   expect(restored.some((r) => r.id !== 'jpeg-p3' && r.format === 'png' && r.colorSpace === 'sRGB')).toBe(true);
-});
-it('adds purpose presets without replacing a saved custom recipe',()=>{
-  const mine={...DEFAULT_RECIPES[0]!,id:'custom-owned',name:'Mine',quality:80};const restored=decodeRecipes([mine]);
-  expect(restored.find(r=>r.id==='custom-owned')).toEqual(mine);
-  expect(restored.find(r=>r.id==='share-srgb')).toMatchObject({colorSpace:'sRGB',longEdge:2560,quality:92});
-  expect(restored.find(r=>r.id==='jpeg-original')).toMatchObject({longEdge:0,quality:100});
 });

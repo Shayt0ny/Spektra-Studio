@@ -1,6 +1,7 @@
-/* Windows Studio: original neutral surfaces and warm-gold controls.
-   Geometry retains the measured editor layout. Photo surround stays neutral;
-   these UI tokens never enter the image renderer. Sizes use --ui-scale. */
+/* theme.css — every visual token, from `Theme/Theme.swift` (the v3 drawing,
+   measured at 1×). Nothing in a component may carry a literal colour that
+   could have come from here. Sizes multiply by --ui-scale (the interface
+   scale, 100 / 115 / 130 %). */
 
 :root {
   color-scheme: dark;
@@ -20,16 +21,11 @@
   --plot-grid: #3a3b39;
   --plot-mid-grey: #4a4b49;
   --accent: #e1a95f;
-  --accent-soft: #45413a;
   --selection: #ffffff;
-  --selection-text: #0f0e0e;
   --on-selection: #0f0e0e;
   --export-chip: #686969;
   --selection-frame: #faf8f4;
   --knob: #fbf8f3;
-  --surface-raised: #363635;
-  --control-border: #545451;
-  --hover: #646460;
   --navigator-well: #1a1a19;
   --latitude-inside: #9c9c9a;
   --latitude-inside-edge: #d6d5d2;
@@ -142,9 +138,6 @@ input {
   font-size: var(--fs-rail-title);
   font-weight: 700;
   flex: none;
-  letter-spacing: .02em;
-  background: linear-gradient(180deg, #353534, var(--card));
-  box-shadow: inset 0 -1px 0 var(--rule);
 }
 .rail-scroll {
   overflow-y: auto;
@@ -177,7 +170,7 @@ input {
   flex: none;
   display: flex;
   align-items: center;
-  background: linear-gradient(180deg, #393938, var(--card));
+  background: var(--card);
   border-bottom: 1px solid var(--rule);
   padding: 0 18px;
   gap: 2px;
@@ -197,16 +190,15 @@ input {
 }
 .icon-btn.active {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 .icon-btn.dim {
-  color: var(--dim);
+  color: rgba(249, 247, 243, 0.55);
 }
 .action-pill {
   min-width: calc(83px * var(--ui-scale));
   height: calc(19px * var(--ui-scale));
-  border-radius: 5px;
-  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  border: 1px solid var(--dim);
   color: var(--dim);
   font-size: var(--fs-action);
   padding: 0 8px;
@@ -219,7 +211,6 @@ input {
 .action-pill.active {
   color: var(--accent);
   border-color: var(--accent);
-  background: var(--accent-soft);
 }
 .bar-status {
   color: var(--dim);
@@ -361,26 +352,6 @@ input {
   inset: 0;
   pointer-events: none;
 }
-.local-mask-overlay { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
-.local-mask-overlay.brush { cursor: none; }
-.mask-toolbar { position: absolute; top: 12px; left: 12px; max-width: calc(100% - 190px); z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: #242424ed; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 7px; box-sizing: border-box; }
-.mask-toolbar span { min-width: 30px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
-.mask-toolbar .btn { flex-shrink: 0; padding-inline: 8px; }
-.cache-location-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.export-quick-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.export-output-summary { padding: 10px; margin-bottom: 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--plot); font-size: var(--fs-small); line-height: 1.6; }
-.export-destination { overflow-wrap: anywhere; color: var(--secondary-text); }
-.mask-add, .mask-actions { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
-.mask-add .btn { flex: 1; padding-inline: 7px; }
-.mask-list { display: grid; gap: 3px; margin: 8px 0; }
-.mask-list-row { display: flex; align-items: center; min-height: 32px; border: 1px solid transparent; border-radius: 5px; }
-.mask-list-row.selected { background: var(--rule); border-color: var(--accent); }
-.mask-eye, .mask-remove { flex: 0 0 29px; padding: 4px; color: var(--dim); }
-.mask-eye[aria-pressed=true] { color: var(--accent); }
-.mask-select { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px; }
-.mask-name { width: 100%; box-sizing: border-box; margin: 5px 0; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 5px; background: var(--field); color: var(--text); }
-.effects-advanced { margin: 9px 0; }
-.effects-advanced summary { color: var(--dim); cursor: pointer; padding: 5px 0; }
 .compare-line {
   position: absolute;
   width: 1px;
@@ -651,7 +622,7 @@ input {
   width: var(--value-width);
   flex: none;
   height: var(--control-height);
-  border-radius: 4px;
+  border-radius: 8.5px;
   background: var(--pill);
   color: var(--text);
   border: none;
@@ -660,14 +631,13 @@ input {
   font-variant-numeric: tabular-nums;
   padding: 0 2px;
   user-select: text;
-  box-shadow: inset 0 0 0 1px var(--control-border);
 }
 
 /* pills, toggles, fields */
 .pill-menu {
   min-height: var(--control-height);
   line-height: 1.3;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--pill);
   padding: 0 8px;
   font-size: var(--fs-small);
@@ -678,7 +648,6 @@ input {
   min-width: 60px;
   justify-content: space-between;
   white-space: nowrap;
-  box-shadow: inset 0 0 0 1px var(--control-border);
 }
 .pill-menu.fill {
   flex: 1;
@@ -719,8 +688,8 @@ input {
 
 /* menus (Radix dropdown) */
 .menu {
-  background: var(--surface-raised);
-  border: 1px solid var(--control-border);
+  background: #3b3b3a;
+  border: 1px solid #1a1a19;
   border-radius: 6px;
   padding: 4px;
   min-width: 140px;
@@ -778,7 +747,7 @@ input {
   padding: 0 4px 0 4px;
   font-size: var(--fs-small);
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: 7.6px;
   cursor: pointer;
   gap: 6px;
 }
@@ -787,8 +756,7 @@ input {
 }
 .stock-row.selected {
   background: var(--selection);
-  color: var(--selection-text);
-  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--on-selection);
 }
 .stock-row.disabled {
   opacity: var(--disabled-opacity);
@@ -839,8 +807,8 @@ input {
 .segmented button {
   min-width: calc(83.5px * var(--ui-scale));
   height: calc(19px * var(--ui-scale));
-  border-radius: 5px;
-  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  border: 1px solid var(--dim);
   color: var(--dim);
   font-size: var(--fs-body);
   font-weight: 700;
@@ -849,10 +817,7 @@ input {
 .segmented button.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: var(--accent-soft);
 }
-.rail.right > .segmented { gap: 5px; padding-right: var(--row-inset); }
-.rail.right > .segmented button { flex: 1; min-width: 0; padding: 0 3px; }
 .segmented .mark {
   position: absolute;
   top: 2px;
@@ -910,8 +875,8 @@ input {
   top: 50%;
   transform: translate(-50%, -50%);
   background: var(--card);
-  border: 1px solid var(--control-border);
-  border-radius: 8px;
+  border: 1px solid var(--rule-region);
+  border-radius: 10px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
   z-index: 41;
   width: min(560px, 92vw);
@@ -924,8 +889,6 @@ input {
   font-size: calc(14px * var(--ui-scale));
   margin: 0;
   padding: 14px 18px 8px;
-  background: linear-gradient(180deg, var(--surface-raised), var(--card));
-  letter-spacing: .02em;
 }
 .dialog .dialog-body {
   padding: 4px 18px 14px;
@@ -939,32 +902,22 @@ input {
   gap: 8px;
   padding: 10px 18px 14px;
   border-top: 1px solid var(--rule);
-  background: var(--field);
 }
 .btn {
   min-height: calc(26px * var(--ui-scale));
   padding: 4px 12px;
   line-height: 1.4;
   border-radius: 6px;
-  background: var(--well);
+  background: #4a4a49;
   color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--control-border);
 }
 .btn.primary {
   background: var(--accent);
   color: var(--on-selection);
   font-weight: 600;
-  box-shadow: none;
 }
 .btn:hover:not(:disabled) {
-  background: var(--hover);
-}
-.btn.primary:hover:not(:disabled) {
-  background: #e6bd84;
-}
-.value-field:focus, .unit-field:focus {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+  filter: brightness(1.1);
 }
 .tabs {
   display: flex;
@@ -977,8 +930,8 @@ input {
   color: var(--dim);
 }
 .tabs button.on {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: #444443;
+  color: var(--text);
 }
 .settings-group {
   margin: 0 0 20px;
@@ -997,8 +950,8 @@ input {
 .settings-layout { display: grid; grid-template-columns: 164px minmax(0, 1fr); flex: 1; min-height: 0; }
 .settings-nav { display: flex; flex-direction: column; gap: 6px; padding: 18px 12px; border-right: 1px solid var(--rule); overflow-y: auto; }
 .settings-nav button { min-height: 40px; padding: 10px 12px; text-align: left; border-radius: 7px; color: var(--secondary-text); line-height: 1.4; }
-.settings-nav button:hover { background: var(--well); }
-.settings-nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.settings-nav button:hover { background: #363635; }
+.settings-nav button.on { background: #45413a; color: var(--accent); font-weight: 600; }
 .dialog .settings-content { padding: 24px; overflow-y: auto; overflow-x: hidden; display: block; }
 .settings-content .settings-group { padding: 0 0 22px; margin: 0 0 22px; border-bottom: 1px solid var(--rule); }
 .settings-content .settings-group:last-child { margin-bottom: 0; border-bottom: 0; }
@@ -1006,7 +959,7 @@ input {
 .settings-content .row { flex-wrap: wrap; height: auto; gap: 10px; margin: 8px 0; }
 .settings-content .row-label { min-width: 0; flex: 1; white-space: normal; font-weight: 500; }
 .settings-content .pill-menu { min-height: 32px; max-width: 65%; padding: 6px 12px; border-radius: 6px; }
-.settings-content .caption { margin: 10px 0 0; color: var(--dim); overflow-wrap: anywhere; }
+.settings-content .caption { margin: 10px 0 0; color: #aaa9a5; overflow-wrap: anywhere; }
 .settings-content .btn { height: auto; min-height: 34px; max-width: 100%; }
 .settings-content dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; }
 .settings-content dt, .settings-content dd { margin: 0; }
@@ -1016,7 +969,7 @@ input {
 .settings-content pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--plot); border-radius: 6px; }
 .settings-field { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; font-weight: 500; min-width: 0; }
 .settings-field input, .settings-field select, .settings-field textarea, .settings-content input[type='number'] {
-  width: 100%; min-height: 36px; padding: 8px 10px; background: var(--field); color: var(--text); border: 1px solid var(--control-border); border-radius: 5px; font: inherit; user-select: text;
+  width: 100%; min-height: 36px; padding: 8px 10px; background: var(--plot); color: var(--text); border: 1px solid #545451; border-radius: 6px; font: inherit; user-select: text;
 }
 .settings-field textarea { min-height: 90px; resize: vertical; }
 .settings-field input:focus, .settings-field textarea:focus { border-color: var(--accent); }

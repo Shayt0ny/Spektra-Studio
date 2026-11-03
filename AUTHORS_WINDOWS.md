@@ -26,9 +26,6 @@ Windows 维护、整合及本分支新增自动调整代码：**shayt0ny**，202
   [spektrafilm](https://github.com/andreavolpato/spektrafilm)。
 - 原生 C++／Metal 移植和 macOS 应用：JamesQiu2005（Hanze Qiu），
   [SpektraLab](https://github.com/JamesQiu2005/SpektraLab)。
-- 独立观片台的工作流参考：**YZH2006517** 及
-  [Photo-All](https://github.com/YZH2006517/Photo-All) 贡献者；上游应用代码为
-  GPL-3.0-or-later。参考版本、范围与独立实现边界见 [Photo-All 来源说明](PHOTO_ALL_REFERENCE.md)。
 - LibRaw、候选分支、RawTherapee 曲线、RawSpeed 相机矩阵、Lensfun 等的
   作者、来源与许可仍以各自源码头、资源 NOTICE 和许可证为准。
   `engine/third_party/` 的外部实现及测量数据不会改成 shayt0ny 原创。

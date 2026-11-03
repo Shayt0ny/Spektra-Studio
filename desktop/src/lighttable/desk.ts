@@ -3,8 +3,8 @@
 // Independent tabletop geometry. Placement never enters a photo recipe.
 import type { Size } from './model';
 export interface DeskView { x: number; y: number; scale: number }
-export interface FilmPiece { key: string; x: number; y: number; width: number; aspect: number; turn: number; tilt?: number }
-export interface DeskState { pieces: FilmPiece[]; view: DeskView; lamp: boolean; brightness: number; arranged: boolean; realistic?:boolean }
+export interface FilmPiece { key: string; x: number; y: number; width: number; aspect: number; turn: number; tilt?: number;strip?:string }
+export interface DeskState { pieces: FilmPiece[]; view: DeskView; lamp: boolean; brightness: number; arranged: boolean; realistic?:boolean;toolsOpen?:boolean }
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export const DESK_BATCH = 12;
 export function deskPage(count: number, index: number) {
@@ -72,10 +72,10 @@ const STORAGE_KEY = 'spektra.lighttable.desk.v1';
 function valid(value: unknown): value is DeskState {
   if (!value || typeof value !== 'object') return false;
   const s = value as DeskState, n = (v: number, a: number, b: number) => Number.isFinite(v) && v >= a && v <= b;
-  return (s.realistic===undefined||typeof s.realistic==='boolean') && typeof s.lamp === 'boolean' && typeof s.arranged === 'boolean' && n(s.brightness, .3, 1.5) && !!s.view &&
+  return (s.realistic===undefined||typeof s.realistic==='boolean') && (s.toolsOpen===undefined||typeof s.toolsOpen==='boolean') && typeof s.lamp === 'boolean' && typeof s.arranged === 'boolean' && n(s.brightness, .3, 1.5) && !!s.view &&
     n(s.view.x, -1000000, 1000000) && n(s.view.y, -1000000, 1000000) && n(s.view.scale, .015, 6) &&
     Array.isArray(s.pieces) && s.pieces.length <= DESK_BATCH && s.pieces.every((p) => p && typeof p.key === 'string' &&
-      n(p.x, -100000, 100000) && n(p.y, -100000, 100000) && n(p.width, 44, 1200) && n(p.aspect, .1, 10) && Number.isInteger(p.turn) && n(p.turn, 0, 3) && (p.tilt === undefined || n(p.tilt, -16, 16)));
+      n(p.x, -100000, 100000) && n(p.y, -100000, 100000) && n(p.width, 44, 1200) && n(p.aspect, .1, 10) && Number.isInteger(p.turn) && n(p.turn, 0, 3) && (p.tilt === undefined || n(p.tilt, -16, 16)) && (p.strip===undefined||typeof p.strip==='string'&&p.strip.length>0&&p.strip.length<=64));
 }
 function tables(storage: Storage): Record<string, unknown> {
   const raw = storage.getItem(STORAGE_KEY); if (!raw) return {};

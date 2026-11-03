@@ -321,9 +321,6 @@ public:
     void overscan_frame(uint32_t& frame_w, uint32_t& frame_h) const;
     std::string overscan_geometry_json() const;
     bool set_overscan_frame(uint32_t frame_w, uint32_t frame_h, std::string& error);
-    // Desktop look amount in encoded ProPhoto, before Layer 2. Reuses the
-    // physical gate mapping; the frame/rebate remains an independent decoration.
-    bool blend_view_source(const Image& source, const Image& print, double amount, Image& out, std::string& error);
     // The film's pixel pitch, from the frame this pipeline is about to render.
     //
     // It must be set before *any* run, not just before `run_film`, and that is
@@ -637,8 +634,6 @@ private:
     /// The sigma `node_lens_blur` blurs with -- one number, three channels --
     /// and the ones the print side's two sharpening nodes use.
     double lens_blur_sigma() const;
-    double enlarger_blur_sigma() const;
-    Blur::Demand print_spectral_demand() const;
     double scanner_blur_sigma() const;
     double unsharp_sigma() const;
     /// `source_long_edge_ / frame_long_edge_`: the full tier's long edge over
@@ -675,7 +670,6 @@ private:
     bool grain_realise(const Image& in, Image& out, std::string& error);
     bool node_enlarger_spectral(const Image& in, Image& out, std::string& error);
     bool node_print_exposure(const Image& in, Image& out, std::string& error);
-    bool node_enlarger_blur(const Image& in, Image& out, std::string& error);
     bool node_print_curves(const Image& in, Image& out, std::string& error);
 
     // RFC-023's Scene Latitude Mapping (`scene_latitude.cpp`): pointwise,
@@ -738,7 +732,6 @@ private:
     int node_count_ = 0;
     double pixel_size_um_ = 0.0;
     uint32_t source_long_edge_ = 0;
-    double overscan_crop_aspect_ = 1;
     Progress* progress_ = nullptr;
     std::optional<double> injected_ev_;
     std::optional<double> last_ae_ev_;

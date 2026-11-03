@@ -39,14 +39,6 @@ beforeEach(async () => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe('persistent display warmup', () => {
-  it('uses the AMD safe format for both display-cache keys and never requests the old 16-bit keys', async () => {
-    session.sessionStore.setState({ hello: { ...hello, backend: { api: 'vulkan', device_name: 'AMD Radeon RX 6600' }, source_formats: ['rgba8', 'rgba16'] } });
-    await session.select('/owned/sony-a7c-ii.ARW'); await vi.advanceTimersByTimeAsync(450);
-    const descriptors = fake.key.mock.calls.map(([d]) => d as DisplayCacheDescriptor);
-    expect(descriptors.some((d) => d.kind === 'print')).toBe(true);
-    expect(descriptors.some((d) => d.kind === 'original')).toBe(true);
-    for (const d of descriptors) expect(d.configuration).toMatchObject({ format: 'rgba8' });
-  });
   it('keys the original cache by source precision independently of film formats', async () => {
     session.sessionStore.setState({hello:{...hello,source_formats:['rgba8','rgba16']}});
     await session.select('/owned/source16.ARW');
@@ -121,7 +113,7 @@ describe('persistent display warmup', () => {
     fake.render.mockImplementation(async (_sid: string, tier: string) => { events.push(`render:${tier}`); return { ...picture('full'), tier, ms: 1 }; });
     await vi.advanceTimersByTimeAsync(450);
     expect(events.indexOf('key:print')).toBeLessThan(events.indexOf('render:full'));
-    expect(fake.write).toHaveBeenCalledWith('snapshot:print', expect.objectContaining({ colorSpace: 'full' }), expect.objectContaining({ retain: true,disk:true,family:expect.any(String) }));
+    expect(fake.write).toHaveBeenCalledWith('snapshot:print', expect.objectContaining({ colorSpace: 'full' }), { retain: true });
     fake.write.mockClear(); session.setView({ fit: false, zoom: 1 }); await vi.advanceTimersByTimeAsync(450);
     expect(fake.write).not.toHaveBeenCalled();
   });
@@ -134,14 +126,14 @@ describe('persistent display warmup', () => {
     })![0];
     fake.peek.mockImplementation((key: string) => key === fullKey ? picture('resident-full') : null);
     fake.write.mockClear(); await session.requestPrint();
-    expect(fake.write.mock.calls.find(([, image]) => 'tier' in image && image.tier === 'live')?.[2]).toMatchObject({ retain: false,disk:false });
+    expect(fake.write.mock.calls.find(([, image]) => 'tier' in image && image.tier === 'live')?.[2]).toEqual({ retain: false });
 
     // The screen may still show a full image, but an exposure edit needs its
     // own exact-key live preview until that new full snapshot exists.
     session.sessionStore.setState({ sidecar: { ...state().sidecar,
       adjustments: { ...state().sidecar.adjustments, exposure: 0.75 } } });
     fake.write.mockClear(); await session.requestPrint();
-    expect(fake.write.mock.calls.find(([, image]) => 'tier' in image && image.tier === 'live')?.[2]).toMatchObject({ retain: true,disk:false });
+    expect(fake.write.mock.calls.find(([, image]) => 'tier' in image && image.tier === 'live')?.[2]).toEqual({ retain: true });
   });
 
   it('drops live and same-source camera RAM before retaining the full picture', async () => {

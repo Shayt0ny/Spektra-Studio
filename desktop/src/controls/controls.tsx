@@ -363,11 +363,11 @@ export function NumberField(p: { value: number; decimals: number; onCommit: (v: 
 
 // ----------------------------------------------------------- SegmentedSwitch
 
-export function SegmentedSwitch<T extends string>(p: { options: { value: T; label: string; marked?: boolean; markHelp?: string;disabled?:boolean }[]; value: T; onChange: (v: T) => void }) {
+export function SegmentedSwitch<T extends string>(p: { options: { value: T; label: string; marked?: boolean; markHelp?: string }[]; value: T; onChange: (v: T) => void }) {
   return (
     <div className="segmented" role="tablist">
       {p.options.map((o) => (
-        <button key={o.value} className={o.value === p.value ? 'on' : ''} role="tab" aria-selected={o.value === p.value} disabled={o.disabled} onClick={() => p.onChange(o.value)}>
+        <button key={o.value} className={o.value === p.value ? 'on' : ''} role="tab" aria-selected={o.value === p.value} onClick={() => p.onChange(o.value)}>
           {o.label}
           {o.marked && <span className="mark" title={o.markHelp} />}
         </button>

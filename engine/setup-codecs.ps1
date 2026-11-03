@@ -5,7 +5,6 @@ $ErrorActionPreference = 'Stop'
 $DependencyDirectory = [IO.Path]::GetFullPath($DependencyDirectory)
 New-Item -ItemType Directory -Path $DependencyDirectory -Force | Out-Null
 $pins = @(
-    @('libwebp-1.6.0', 'libwebp-1.6.0.tar.gz', 'https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz', 'e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564'),
     @('libjpeg-turbo-3.2.0', 'libjpeg-turbo-3.2.0.tar.gz', 'https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz', '6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e'),
     @('libpng-1.6.59', 'libpng-1.6.59.tar.xz', 'https://download.sourceforge.net/libpng/libpng-1.6.59.tar.xz', 'd80dd2a38a37f803cb9b6ac7b14bd6e74ddc3b654780a8380bdf93523fdb4389'),
     @('zlib-ng-2.3.3', 'zlib-ng-2.3.3.tar.gz', 'https://codeload.github.com/zlib-ng/zlib-ng/tar.gz/refs/tags/2.3.3', 'f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1'),

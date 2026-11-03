@@ -1,0 +1,19 @@
+Spektra Studio Panasonic DC-ZS300 / DC-TZ300 / DC-TX3 compatibility
+2026-11-01; integration copyright (C) 2026 shayt0ny.
+
+RawSpeed documents the exact same XYZ-to-camera calibration as LibRaw's
+existing DC-ZS200 entry. This adapter reuses that LibRaw coefficient lookup;
+no RawSpeed source code or XML file is incorporated, and no camera sensor
+levels, geometry or RAW data are replaced.
+
+Verification source: darktable-org/rawspeed data/cameras.xml, DC-ZS300
+and mode=3:2, retrieved 2026-11-01:
+https://github.com/darktable-org/rawspeed/blob/develop/data/cameras.xml
+RawSpeed camera data is CC BY-SA 3.0, credited to RawSpeed contributors.
+https://creativecommons.org/licenses/by-sa/3.0/
+LibRaw's own colordata.cpp coefficient table is LGPL 2.1 / CDDL dual licensed:
+https://github.com/LibRaw/LibRaw/blob/0.22.2/src/tables/colordata.cpp
+
+Only exact Panasonic model names with a three-channel, non-DNG sensor use
+the compatibility lookup when the upstream lookup returns no calibration.
+An existing upstream matrix takes precedence.

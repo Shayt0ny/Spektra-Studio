@@ -2,11 +2,8 @@
 //   Pre-Dev:  Latitude · Input / Camera · Film Format · Scene Placement
 //   Post-Dev: White Balance · Exposure · Curve · Color Balance (Layer 2)
 
-import { useEffect, useRef, useState } from 'react';
-import { RawToneSection } from './RawToneSection';
-import { RAW_TONE_DEFAULT } from '@shared/rawTone';
-import { HSL_NAMES, type HslName, type HslBand } from '@shared/colorDetail';
-import { autoAdjust, autoCurve, autoPlaceScene, canAutoAdjust, setFilmStrength, setParametersStage } from '../state/session';
+import { useRef, useState } from 'react';
+import { autoAdjust, autoCurve, canAutoAdjust } from '../state/session';
 import { Checkbox, NumberField, PillMenu, ScrubSlider, Section, SegmentedSwitch, ToggleRow, signed } from '../controls/controls';
 import { isChinese, t, tz } from '../i18n';
 import { cameraParams, pairFocus, setCamera, shownAdjustments, shownDecode as selectedDecode, updatePair, canPickNeutral, currentPlacementWindow, hostRedecodes, placeScene, placementReady, resetScenePlacement, setAdjustments, setDecode, setFilmFrame, setFilmSide, setParams, setSideLengthMM, startNeutralPick, useSession } from '../state/session';
@@ -23,7 +20,7 @@ import {
   aeMethodOf,
   applyAEMethod,
 } from '@shared/params';
-import { type ColorZone, type CurveChannel, CURVE_CHANNELS, CURVES_IDENTITY, ADJUSTMENTS_DEFAULT, isNeutral } from '@shared/adjustments';
+import { type ColorZone, type CurveChannel, CURVE_CHANNELS, isNeutral } from '@shared/adjustments';
 import {
   type AsShot,
   TEMPERATURE_RANGE,
@@ -40,55 +37,39 @@ import {
 } from '@shared/whiteBalance';
 import { LensProfileImport } from './LensProfileImport';
 import { CurveEditor } from './CurveEditor';
-import { LocalMasksSection } from './LocalMasksSection';
 import { unsupportedReason } from './gate';
 import { type LatitudeReply, type PlacementSide, placementMessage } from '@shared/latitude';
 import { edgeEffective, edgeFormat } from '@shared/filmEdge';
 
 export function RightRail() {
   const tab = useSettings((s) => s.parametersTab);
-  const selection=useSession(s=>s.selection),pair=useSession(s=>s.pair),hello=useSession(s=>s.hello),batch=useSession(s=>s.batchExporting);
-  const rawReady=!!selection&&isRawPath(selection)&&!pair&&!!hello?.methods?.includes('render_source');
-  useEffect(()=>{setParametersStage(tab);},[tab,selection,pair,hello,batch]);
   const edited = useSession((s) => shownAdjustments(s).enabled && !isNeutral(shownAdjustments(s)));
   return (
     <aside className="rail right" data-testid="right-rail">
       <div className="rail-header">{t('railParameters')}</div>
       <SegmentedSwitch
         value={tab}
-        onChange={setParametersStage}
+        onChange={(v) => settingsStore.getState().set('parametersTab', v)}
         options={[
-          { value: 'raw', label: tz('RAW tone','RAW 影调'), disabled: !rawReady||batch },
-          { value: 'preDev', label: t('tabPreDev'), disabled: batch },
-          { value: 'postDev', label: t('tabPostDev'), disabled: batch, marked: edited, markHelp: tz('The grade is not neutral.', '调色不是中性的。') },
+          { value: 'preDev', label: t('tabPreDev') },
+          { value: 'postDev', label: t('tabPostDev'), marked: edited, markHelp: tz('The grade is not neutral.', '调色不是中性的。') },
         ]}
       />
       <div className="hairline" />
       <div className="rail-scroll">
-        {tab === 'raw' ? (
-          <div data-testid="raw-page">
-            <p className="caption">{tz('RAW base · before film and crop. Return to Pre-Dev to see the film result.','RAW 基底 · 胶片与裁剪前。切回「显影前」查看胶片效果。')}</p>
-            <RawToneSection />
-            <CurveSection stage="raw" />
-            <ColorBalanceSection stage="raw" />
-            <ColorDetailSection stage="raw" />
-          </div>
-        ) : tab === 'preDev' ? (
+        {tab === 'preDev' ? (
           <>
             <LatitudeSection />
             <CameraSection />
             <FilmFormatSection />
-            <FilmEffectsSection />
             <ScenePlacementSection />
           </>
         ) : (
           <>
-            <LocalMasksSection />
             <WhiteBalanceSection />
             <ExposureSection />
             <CurveSection />
             <ColorBalanceSection />
-            <ColorDetailSection />
           </>
         )}
       </div>
@@ -97,29 +78,6 @@ export function RightRail() {
 }
 
 // ------------------------------------------------------------------ Latitude
-
-type ColorStage='post'|'raw';
-function useRawColorDisabled(stage:ColorStage,capability='raw_color') {
-  return useSession(s=>stage==='raw'&&(!s.engineSession||s.batchExporting||s.redecoding||s.developing||!s.hello?.view_options?.includes(capability)));
-}
-function ColorDetailSection({stage='post'}:{stage?:ColorStage}) {
-  const a=useSession(shownAdjustments),raw=useSession(s=>s.sidecar.decode.rawTone??RAW_TONE_DEFAULT);
-  const supported=useSession(s=>!!s.hello?.view_options?.includes(stage==='raw'?'raw_color':'hsl_texture'));
-  const rawDisabled=useRawColorDisabled(stage),disabled=stage==='raw'?rawDisabled:!supported||!a.enabled;
-  const [name,setName]=useState<HslName>('red'),hsl=stage==='raw'?raw.hsl:a.hsl,band=hsl?.[name]??zero;
-  const names=[tz('Red','红'),tz('Orange','橙'),tz('Yellow','黄'),tz('Green','绿'),tz('Aqua','青'),tz('Blue','蓝'),tz('Purple','紫'),tz('Magenta','洋红')];
-  const change=(patch:Partial<HslBand>)=>stage==='raw'?setDecode(d=>{const q=d.rawTone??RAW_TONE_DEFAULT;return {...d,rawTone:{...q,hsl:{...q.hsl,[name]:{...(q.hsl?.[name]??zero),...patch}}}};}):setAdjustments(q=>({...q,hsl:{...q.hsl,[name]:{...(q.hsl?.[name]??zero),...patch}}}));
-  const reset=()=>stage==='raw'?setDecode(d=>({...d,rawTone:{...(d.rawTone??RAW_TONE_DEFAULT),hsl:{}}})):setAdjustments(q=>({...q,hsl:{},texture:0,clarity:0}));
-  return <Section id={stage==='raw'?'rawHsl':'colorDetail'} title={stage==='raw'?'HSL':tz('HSL & detail','HSL 与质感')} unsupported={!supported?tz('Update the native engine.','请更新原生引擎。'):null} onReset={reset} resetEnabled={!disabled}>
-    <PillMenu label={tz('Color range','颜色范围')} value={name} options={HSL_NAMES.map((value,i)=>({value,label:names[i]!}))} onChange={setName} />
-    <ScrubSlider label={tz('Hue','色相')} value={band.hue} range={[-30,30]} zero={0} snap={5} format={v=>`${v>0?'+':''}${v.toFixed(0)}°`} disabled={disabled} onChange={hue=>change({hue})} testId={stage==='raw'?'raw-hsl-hue':'hsl-hue'} />
-    <ScrubSlider label={tz('Saturation','饱和度')} value={band.saturation} range={[-100,100]} zero={0} snap={10} disabled={disabled} onChange={saturation=>change({saturation})} testId={stage==='raw'?'raw-hsl-saturation':'hsl-saturation'} />
-    <ScrubSlider label={tz('Luminance','明亮度')} value={band.luminance} range={[-100,100]} zero={0} snap={10} disabled={disabled} onChange={luminance=>change({luminance})} testId={stage==='raw'?'raw-hsl-luminance':'hsl-luminance'} />
-    {stage==='post'&&<><ScrubSlider label={tz('Texture','纹理')} value={a.texture??0} range={[-100,100]} zero={0} snap={10} disabled={disabled} onChange={texture=>setAdjustments(q=>({...q,texture}))} testId="detail-texture" />
-    <ScrubSlider label={tz('Clarity','清晰度')} value={a.clarity??0} range={[-100,100]} zero={0} snap={10} disabled={disabled} onChange={clarity=>setAdjustments(q=>({...q,clarity}))} testId="detail-clarity" /></>}
-    <p className="caption">{stage==='raw'?tz('Overlapping colour ranges, applied before film. Double-click values to type.','颜色范围平滑重叠，在胶片前应用。双击数值可键盘输入。'):tz('Overlapping color ranges; positive detail enhances local contrast, negative softens. Applied before masks. Double-click values to type.','颜色范围平滑重叠；质感正值增强局部反差、负值柔化，在蒙版前应用。双击数值可键盘输入。')}</p>
-  </Section>;
-}
 
 function LatitudeSection() {
   const noFilm = useSession((s) => s.sidecar.noFilm);
@@ -212,9 +170,6 @@ function CameraSection() {
       ]}
     >
       <PillMenu label={t('cameraMetering')} value={ae} options={options} fill onChange={(v) => setCamera((q) => applyAEMethod(q, v))} testId="metering" />
-      <ScrubSlider label={tz('Camera lens blur (µm)', '相机镜头模糊（微米）')} value={p.cameraLensBlurUm} range={[0, 200]} zero={0} snap={0.05} format={(v) => v.toFixed(2)}
-        disabled={state.sidecar.noFilm} reason={tz('Available with film simulation.', '启用胶片模拟后可用。')}
-        onChange={(v) => setParams((q) => ({ ...q, cameraLensBlurUm: v }))} testId="camera-lens-blur" />
       {hole && focus && <PillMenu label={tz('Exposure scope', '曝光范围')} value={hole.exposureScope}
         options={[{ value: 'frame', label: tz('Frame', '这一格') }, { value: 'film', label: tz('+ Film', '+ 胶片') }]}
         onChange={(v) => updatePair((p) => ({ ...p, [focus]: { ...p[focus]!, exposureScope: v } }))} />}
@@ -307,7 +262,11 @@ function useWhiteBalance() {
 function FilmFormatSection() {
   const p = useSession((s) => s.sidecar.params);
   const gate = useSession((s) => s.gate);
+  const monochrome = useSession((s) => s.catalog.isMonochrome(s.sidecar.params.filmStock));
+  // CineStill 800T: no layer to put back, and the engine reads its own tag whatever the switch says.
+  const noLayer = useSession((s) => s.catalog.hasNoAntihalationLayer(s.sidecar.params.filmStock));
   const unit = useSettings((s) => s.sideUnit);
+  const decouple = useSettings((s) => s.decoupleEffects);
   const isCustom = p.filmFrame === FILM_FRAME_CUSTOM.id;
   const heldFrame = edgeEffective(p.filmEdge, gate) ? edgeFormat(p.filmEdge.format) : undefined;
   const heldReason = heldFrame ? tz(
@@ -315,20 +274,32 @@ function FilmFormatSection() {
     `由片边设定：${heldFrame.label}（${heldFrame.long} × ${heldFrame.short} mm）。关闭片边后可在此选择画幅。`,
   ) : undefined;
   const lengthDisabled = !!heldFrame || !isCustom;
+  const e = p.effects;
+  const setE = (patch: Partial<typeof e>) => setParams((q) => ({ ...q, effects: { ...q.effects, ...patch } }));
+  const strength = (label: string, key: 'grain' | 'halation' | 'scatter' | 'couplers' | 'glare', enabled: boolean) => (
+    <ScrubSlider label={label} value={e[key]} range={[...EFFECT_RANGES[key]] as [number, number]} zero={1} snap={0.25} format={(v) => v.toFixed(2)} disabled={!enabled} reason={t('reasonEffectOff')} onChange={(v) => setE({ [key]: v })} />
+  );
   return (
     <Section
       id="filmFormat"
       title={t('filmFormat')}
       onReset={() => {
         // The gate overrides the physical frame without replacing its saved
-        // controls. Resetting format leaves the independent effects alone.
+        // controls. An effects reset must leave that held choice intact too.
         if (!heldFrame) {
           setFilmFrame('135');
           setFilmSide('short');
         }
-        setParams((q) => ({ ...q, densityCurveGamma: 1 }));
+        setParams((q) => ({ ...q, densityCurveGamma: 1, grainActive: true, halationActive: true, glareActive: true, effects: EFFECTS_DEFAULT }));
       }}
       resetHelp={t('helpResetFilmFormat')}
+      menu={[
+        { label: t('helpAllEffectsOn'), onSelect: () => setParams((q) => ({ ...q, grainActive: true, halationActive: true, glareActive: true })) },
+        { label: t('helpAllEffectsOff'), onSelect: () => setParams((q) => ({ ...q, grainActive: false, halationActive: false, glareActive: false })) },
+        { label: t('helpResetEffectStrengths'), onSelect: () => setParams((q) => ({ ...q, effects: EFFECTS_DEFAULT })) },
+        { label: monochrome ? tz('Single-layer grain (black-and-white film)', '单层颗粒（黑白胶片）') : t('helpSubLayerGrain'),
+          checked: monochrome || e.grainLayered, disabled: !p.grainActive || monochrome, onSelect: () => setE({ grainLayered: !e.grainLayered }) },
+      ]}
     >
       <PillMenu
         label={t('filmFormatSize')}
@@ -374,37 +345,10 @@ function FilmFormatSection() {
           testId="film-format-unit"
         />
       </div>
+      <ToggleRow label={t('filmGrain')} on={p.grainActive} onChange={(v) => setParams((q) => ({ ...q, grainActive: v }))} testId="grain-toggle" />
       <ScrubSlider label={tz('Film response gamma', '胶片响应 Gamma')} value={p.densityCurveGamma} range={[.2, 4]} zero={1} snap={.1} format={(v) => v.toFixed(2)} onChange={(v) => setParams((q) => ({ ...q, densityCurveGamma: v }))} testId="density-gamma" />
-    </Section>
-  );
-}
-
-function FilmEffectsSection(){
-  const p=useSession(s=>s.sidecar.params),e=p.effects;
-  const overall=useSession(s=>s.sidecar.filmStrength), supportsOverall=useSession(s=>!!s.hello?.view_options?.includes('film_strength'));
-  const noFilm=useSession(s=>s.sidecar.noFilm);
-  const monochrome=useSession(s=>s.catalog.isMonochrome(s.sidecar.params.filmStock));
-  const noLayer=useSession(s=>s.catalog.hasNoAntihalationLayer(s.sidecar.params.filmStock));
-  const setE=(patch:Partial<typeof e>)=>setParams(q=>({...q,effects:{...q.effects,...patch}}));
-  const strength=(label:string,key:'grain'|'halation'|'scatter'|'couplers'|'glare',enabled:boolean)=><ScrubSlider label={label} value={e[key]} range={[...EFFECT_RANGES[key]] as [number,number]} zero={1} snap={.25} format={v=>`${Math.round(v*100)} %`} parse={v=>Number.parseFloat(v)/100} disabled={!enabled} reason={t('reasonEffectOff')} onChange={v=>setE({[key]:v})} testId={`effect-strength-${key}`}/>;
-  return <Section id="filmEffects" title={tz('Film effects','胶片效果')} onReset={()=>setParams(q=>({...q,grainActive:true,grainBlur:0.65,halationActive:true,glareActive:true,effects:EFFECTS_DEFAULT}))}
-    resetHelp={t('helpResetEffectStrengths')} menu={[
-      {label:t('helpAllEffectsOn'),onSelect:()=>setParams(q=>({...q,grainActive:true,halationActive:true,glareActive:true}))},
-      {label:t('helpAllEffectsOff'),onSelect:()=>setParams(q=>({...q,grainActive:false,halationActive:false,glareActive:false}))},
-      {label:monochrome?tz('Single-layer grain (black-and-white film)','单层颗粒（黑白胶片）'):t('helpSubLayerGrain'),checked:monochrome||e.grainLayered,disabled:!p.grainActive||monochrome,onSelect:()=>setE({grainLayered:!e.grainLayered})},
-    ]}>
-      <ScrubSlider label={tz('Overall film strength','整体胶片强度')} value={overall*100} range={[0,100]} zero={100} snap={10}
-        format={v=>`${Math.round(v)} %`} disabled={!supportsOverall||noFilm||p.digitalIntermediate}
-        reason={tz('Requires film view and an updated engine; unavailable for DI codes.','需要启用胶片模拟并使用新版引擎，数字中间片模式不适用。')}
-        onChange={v=>setFilmStrength(v/100)} testId="overall-film-strength" />
-      <p className="caption">{tz('100% keeps the complete look; 20% blends it with the decoded original. Post-Dev and masks follow. Film borders stay intact.','100% 保留完整效果；20% 与原始显影基底混合，之后再应用显影后调色和蒙版。胶片边框保留。')}</p>
-      <ToggleRow label={t('filmGrain')} on={p.grainActive} onChange={v=>setParams(q=>({...q,grainActive:v}))} testId="grain-toggle"/>
-      {strength(t('filmGrainStrength'),'grain',p.grainActive)}
-      <ScrubSlider label={tz('Density diffusion (px)', '显影密度扩散（像素）')} value={p.grainBlur} range={[0, 10]} zero={0.65} snap={0.05} format={(v) => v.toFixed(2)}
-        disabled={!p.grainActive || e.grain === 0 || noFilm} reason={tz('Requires active grain; 0 disables diffusion.', '需开启颗粒；0 关闭密度扩散。')}
-        onChange={(v) => setParams((q) => ({ ...q, grainBlur: v }))} testId="grain-blur" />
+      {decouple && strength(t('filmGrainStrength'), 'grain', p.grainActive)}
       <ToggleRow label={t('filmHalation')} on={p.halationActive} onChange={(v) => setParams((q) => ({ ...q, halationActive: v }))} />
-      {strength(t('filmHalationStrength'),'halation',p.halationActive)}
       {noLayer ? (
         <ToggleRow label={t('filmAntihalationLayer')} on={false} disabled reason={t('reasonNoAntihalationLayer')} onChange={() => {}} testId="antihalation-toggle" />
       ) : (
@@ -415,23 +359,25 @@ function FilmEffectsSection(){
       {noLayer && (
         <ScrubSlider label={t('filmHighlightHeadroom')} value={e.highlightHeadroom} range={[...EFFECT_RANGES.highlightHeadroom] as [number, number]} zero={4} snap={0.5} format={(v) => v.toFixed(1)} disabled={!p.halationActive} reason={t('reasonEffectOff')} onChange={(v) => setE({ highlightHeadroom: v })} testId="headroom-slider" />
       )}
-      <details className="effects-advanced"><summary>{tz('Advanced effects','高级效果')}</summary>
+      {decouple && (
+        <>
+          {strength(t('filmHalationStrength'), 'halation', p.halationActive)}
           {strength(t('filmScatterStrength'), 'scatter', p.halationActive)}
           <ScrubSlider label={t('filmHighlightBoost')} value={e.highlightBoost} range={[0, 8]} snap={0.5} format={(v) => v.toFixed(1)} disabled={!p.halationActive} onChange={(v) => setE({ highlightBoost: v })} />
           <ToggleRow label={t('filmCouplers')} on={e.couplersActive} onChange={(v) => setE({ couplersActive: v })} />
           {strength(t('filmCouplersStrength'), 'couplers', e.couplersActive)}
-      </details>
+        </>
+      )}
       <ToggleRow label={t('filmGlare')} on={p.glareActive} disabled={!p.printEffects} reason={t('reasonPrintEffectsOff')} onChange={(v) => setParams((q) => ({ ...q, glareActive: v }))} />
-      {strength(t('filmGlareStrength'), 'glare', p.glareActive && p.printEffects)}
+      {decouple && strength(t('filmGlareStrength'), 'glare', p.glareActive && p.printEffects)}
     </Section>
-  ;
+  );
 }
 
 // ----------------------------------------------------------- Scene Placement
 
 function ScenePlacementSection() {
   const s = useSession((s) => s);
-  const [autoMessage, setAutoMessage] = useState('');
   const sl = s.sidecar.params.sceneLatitude, l = s.latitude;
   const unsupported = unsupportedReason('scene_latitude_mapping', s.gate.sceneLatitude);
   const ready = placementReady();
@@ -451,9 +397,6 @@ function ScenePlacementSection() {
   };
   return (
     <Section id="scenePlacement" title={t('sectionScenePlacement')} unsupported={unsupported} onReset={resetScenePlacement} resetHelp={t('helpResetPlacement')} resetEnabled={s.gate.sceneLatitude && (sl.active || sl.highlightPullBack > 0 || sl.shadowPullBack > 0)}>
-      <p className="caption">{tz('Fits the scene’s highlights and shadows into this film/paper latitude before development. Pull-back is measured in stops; this is separate from Post-Dev exposure.', '在显影前，把原片高光和暗部安排进当前胶片／相纸的宽容度。回拉单位是曝光档，与显影后曝光调整分开。')}</p>
-      <button className="btn" style={{ width: '100%' }} data-testid="auto-scene-placement" disabled={!ready} title={tz('Use the current measured suggestion; Ctrl+Z undoes the whole action.', '使用当前测量的建议值，Ctrl+Z 可整体撤销。')} onClick={() => setAutoMessage(autoPlaceScene())}>{tz('Auto scene placement', '一键自动置位')}</button>
-      {autoMessage && <p className="caption" role="status" data-testid="auto-scene-message">{autoMessage}</p>}
       {reason && !unsupported && <p className="caption">{reason}</p>}
       {row('highlight')}{row('shadow')}
     </Section>
@@ -498,8 +441,8 @@ function ExposureSection() {
       {row(t('exposureSaturation'), 'saturation', [-100, 100], 0, 5)}
       {row(t('exposureHighlights'), 'highlights', [-100, 100], 0, 5)}
       {row(t('exposureShadows'), 'shadows', [-100, 100], 0, 5)}
-      {row(t('exposureBlackPoint'), 'blackPoint', [-50, 50], 0, 1)}
-      {row(t('exposureWhitePoint'), 'whitePoint', [-50, 50], 0, 1)}
+      {row(t('exposureBlackPoint'), 'blackPoint', [0, 50], 0, 1)}
+      {row(t('exposureWhitePoint'), 'whitePoint', [0, 50], 0, 1)}
     </Section>
   );
 }
@@ -512,21 +455,34 @@ const CHANNEL_LABEL: Record<CurveChannel, () => string> = {
   blue: () => t('curveBlue'),
 };
 
-function CurveSection({stage='post'}:{stage?:ColorStage}) {
-  const [ch,setCh]=useState<CurveChannel>('rgb');
-  const ready=useSession(()=>canAutoAdjust()),busy=useSession(s=>s.autoAdjusting),message=useSession(s=>s.autoCurveMessage);
-  const disabled=useRawColorDisabled(stage,'raw_tone');
-  const reset=(all=false)=>stage==='raw'?setDecode(d=>{const a=d.rawTone??RAW_TONE_DEFAULT;return {...d,rawTone:{...a,curves:all?CURVES_IDENTITY:{...a.curves,[ch]:{points:[[0,0],[1,1]]}}}};}):setAdjustments(q=>({...q,curves:all?CURVES_IDENTITY:{...q.curves,[ch]:{points:[[0,0],[1,1]]}}}));
-  return <Section id={stage==='raw'?'rawCurve':'curve'} title={stage==='raw'?tz('RAW curves','RAW 曲线'):t('sectionCurve')} onReset={()=>reset()} resetEnabled={!disabled} resetHelp={t('helpReset')}
-    menu={[{label:t('helpResetChannels'),disabled,onSelect:()=>reset(true)}]}>
-    {stage==='post'&&<><button className="btn curve-auto" data-testid="auto-curve" disabled={!ready} onClick={()=>void autoCurve().then(applied=>{if(applied)setCh('luma');})}
-      title={tz('Build an editable luminance curve. Other controls and colour curves are preserved.','生成可编辑的明度曲线，保留其他调色和色彩通道曲线。')}>
-      {busy?tz('Analyzing…','正在分析…'):tz('Auto luma curve','自动明度曲线')}</button>
-      {message&&<div className="caption" role="status" data-testid="auto-curve-message">{message}</div>}</>}
-    <div className="curve-channels">{CURVE_CHANNELS.map(c=><button key={c} className={'btn'+(c===ch?' primary':'')} onClick={()=>setCh(c)}>{CHANNEL_LABEL[c]()}</button>)}</div>
-    <div style={{pointerEvents:disabled?'none':undefined,opacity:disabled?.5:1}}><CurveEditor channel={ch} stage={stage}/></div>
-    {stage==='raw'&&<p className="caption">{tz('Log-light axis with extended HDR endpoints. Select a point to enter input/output values.','对数光量坐标，端点向 HDR 延伸。选中控制点后可输入数值。')}</p>}
-  </Section>;
+function CurveSection() {
+  const [ch, setCh] = useState<CurveChannel>('rgb');
+  const ready=useSession(()=>canAutoAdjust());
+  const busy=useSession(s=>s.autoAdjusting);
+  const message=useSession(s=>s.autoCurveMessage);
+  return (
+    <Section
+      id="curve"
+      title={t('sectionCurve')}
+      onReset={() => setAdjustments((q) => ({ ...q, curves: { ...q.curves, [ch]: { points: [[0, 0], [1, 1]] } } }))}
+      resetHelp={t('helpReset')}
+      menu={[{ label: t('helpResetChannels'), onSelect: () => setAdjustments((q) => ({ ...q, curves: { rgb: { points: [[0, 0], [1, 1]] }, luma: { points: [[0, 0], [1, 1]] }, red: { points: [[0, 0], [1, 1]] }, green: { points: [[0, 0], [1, 1]] }, blue: { points: [[0, 0], [1, 1]] } } })) }]}
+    >
+      <button className="btn curve-auto" data-testid="auto-curve" disabled={!ready} onClick={()=>void autoCurve().then(applied=>{if(applied)setCh('luma');})}
+        title={tz('Build an editable luminance curve. Other controls and colour curves are preserved.','生成可编辑的明度曲线，保留其他调色和色彩通道曲线。')}>
+        {busy?tz('Analyzing…','正在分析…'):tz('Auto luma curve','自动明度曲线')}
+      </button>
+      {message&&<div className="caption" role="status" data-testid="auto-curve-message">{message}</div>}
+      <div className="curve-channels">
+        {CURVE_CHANNELS.map((c) => (
+          <button key={c} className={'btn' + (c === ch ? ' primary' : '')} onClick={() => setCh(c)}>
+            {CHANNEL_LABEL[c]()}
+          </button>
+        ))}
+      </div>
+      <CurveEditor channel={ch} />
+    </Section>
+  );
 }
 
 const ZONES: { key: 'master' | 'shadows' | 'midtones' | 'highlights'; label: () => string }[] = [
@@ -536,22 +492,32 @@ const ZONES: { key: 'master' | 'shadows' | 'midtones' | 'highlights'; label: () 
   { key: 'highlights', label: () => t('exposureHighlights') },
 ];
 
-function ColorBalanceSection({stage='post'}:{stage?:ColorStage}) {
-  const cb=useSession(s=>stage==='raw'?(s.sidecar.decode.rawTone?.colorBalance??ADJUSTMENTS_DEFAULT.colorBalance):shownAdjustments(s).colorBalance);
-  const disabled=useRawColorDisabled(stage);
-  const [zone,setZone]=useState<(typeof ZONES)[number]['key']>('master');
-  const z=cb[zone];
-  const setZ=(patch:Partial<ColorZone>)=>stage==='raw'?setDecode(d=>{const a=d.rawTone??RAW_TONE_DEFAULT,c=a.colorBalance??ADJUSTMENTS_DEFAULT.colorBalance;return {...d,rawTone:{...a,colorBalance:{...c,[zone]:{...c[zone],...patch}}}};}):setAdjustments(q=>({...q,colorBalance:{...q.colorBalance,[zone]:{...q.colorBalance[zone],...patch}}}));
-  const reset=()=>stage==='raw'?setDecode(d=>({...d,rawTone:{...(d.rawTone??RAW_TONE_DEFAULT),colorBalance:ADJUSTMENTS_DEFAULT.colorBalance}})):setAdjustments(q=>({...q,colorBalance:ADJUSTMENTS_DEFAULT.colorBalance}));
-  return <Section id={stage==='raw'?'rawColorBalance':'colorbalance'} title={t('sectionColorBalance')} onReset={reset} resetEnabled={!disabled} resetHelp={t('helpReset')}>
-    <div className="row" style={{gap:4}}>{ZONES.map(zz=><button key={zz.key} className={'btn'+(zz.key===zone?' primary':'')} style={{height:18,padding:'0 8px',fontSize:'var(--fs-small)'}} onClick={()=>setZone(zz.key)}>{zz.label()}</button>)}</div>
-    <div style={{pointerEvents:disabled?'none':undefined,opacity:disabled?.5:1}}><HueWheel zone={z} onChange={setZ}/></div>
-    <ScrubSlider label={tz('Hue','色相')} value={z.hue} range={[0,360]} snap={15} format={v=>v.toFixed(0)+'°'} gradient="linear-gradient(90deg,#e8524e,#e8c04e,#62c462,#4ec0e8,#5d7de8,#d05bd0,#e8524e)" disabled={disabled} onChange={hue=>setZ({hue})} testId={stage==='raw'?'raw-balance-hue':undefined}/>
-    <ScrubSlider label={t('exposureSaturation')} value={z.saturation} range={[0,1]} snap={.05} disabled={disabled} onChange={saturation=>setZ({saturation})} testId={stage==='raw'?'raw-balance-saturation':undefined}/>
-    <ScrubSlider label={tz('Luminance','亮度')} value={z.luminance} range={[-1,1]} snap={.05} format={signed(2)} disabled={disabled} onChange={luminance=>setZ({luminance})} testId={stage==='raw'?'raw-balance-luminance':undefined}/>
-  </Section>;
+function ColorBalanceSection() {
+  const cb = useSession((s) => shownAdjustments(s).colorBalance);
+  const [zone, setZone] = useState<(typeof ZONES)[number]['key']>('master');
+  const z = cb[zone];
+  const setZ = (patch: Partial<ColorZone>) => setAdjustments((q) => ({ ...q, colorBalance: { ...q.colorBalance, [zone]: { ...q.colorBalance[zone], ...patch } } }));
+  return (
+    <Section
+      id="colorbalance"
+      title={t('sectionColorBalance')}
+      onReset={() => setAdjustments((q) => ({ ...q, colorBalance: { master: zero, shadows: zero, midtones: zero, highlights: zero } }))}
+      resetHelp={t('helpReset')}
+    >
+      <div className="row" style={{ gap: 4 }}>
+        {ZONES.map((zz) => (
+          <button key={zz.key} className={'btn' + (zz.key === zone ? ' primary' : '')} style={{ height: 18, padding: '0 8px', fontSize: 'var(--fs-small)' }} onClick={() => setZone(zz.key)}>
+            {zz.label()}
+          </button>
+        ))}
+      </div>
+      <HueWheel zone={z} onChange={setZ} />
+      <ScrubSlider label={tz('Hue', '色相')} value={z.hue} range={[0, 360]} snap={15} format={(v) => v.toFixed(0) + '°'} gradient="linear-gradient(90deg,#e8524e,#e8c04e,#62c462,#4ec0e8,#5d7de8,#d05bd0,#e8524e)" onChange={(v) => setZ({ hue: v })} />
+      <ScrubSlider label={t('exposureSaturation')} value={z.saturation} range={[0, 1]} snap={0.05} onChange={(v) => setZ({ saturation: v })} />
+      <ScrubSlider label={tz('Luminance', '亮度')} value={z.luminance} range={[-1, 1]} snap={0.05} format={signed(2)} onChange={(v) => setZ({ luminance: v })} />
+    </Section>
+  );
 }
-
 const zero: ColorZone = { hue: 0, saturation: 0, luminance: 0 };
 
 /** A small hue/saturation disc: drag to set both (the Mac's ColorWheel, simplified). */

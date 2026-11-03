@@ -6,13 +6,14 @@ import { join } from 'node:path';
 import { FrameDecoder, encodeFrame } from '../../src/shared/framing';
 
 const dir = process.env.SPEKTRALAB_HOST_DIR, python = process.env.SPEKTRALAB_TEST_PYTHON;
+const resources = dir ? join(dir, existsSync(join(dir, 'host', 'engine')) ? 'host/engine' : 'engine') : '';
 test.skip(!dir || !python || !existsSync(join(dir, 'spektralab-host.exe')), 'requires staged native Vulkan host and owned Pillow fixture');
 
 test('native lighttable pixels agree with file output after local mask, crop and turn; editor session survives', async ({ page }) => {
   test.setTimeout(120000);
   const work = mkdtempSync(join(tmpdir(), 'spektra-lighttable-')), source = join(work, 'owned.png'), target = join(work, 'check.png');
   execFileSync(python!, ['-c', 'from PIL import Image; import sys; im=Image.new("RGB",(160,120)); im.putdata([(x*255//159,y*255//119,(x+y)*255//278) for y in range(120) for x in range(160)]); im.save(sys.argv[1])', source]);
-  const child = spawn(join(dir!, 'spektralab-host.exe'), ['--resources', join(dir!, 'engine')], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn(join(dir!, 'spektralab-host.exe'), ['--resources', resources], { stdio: ['pipe', 'pipe', 'ignore'] });
   const decoder = new FrameDecoder(); let id = 0;
   const pending = new Map<number, { resolve(value: { result: Record<string, unknown>; pixels: number[] }): void; reject(error: Error): void }>();
   child.stdout.on('data', (data: Buffer) => {

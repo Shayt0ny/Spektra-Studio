@@ -12,7 +12,6 @@ import { type Geometry, GEOMETRY_DEFAULT, decodeGeometry, encodeGeometry } from 
 import { type FilmParams, FILM_PARAMS_DEFAULT, decodeFilmParams } from './params.ts';
 import type { LensCalibrationProfile } from './lensProfile.ts';
 import type { CameraCurveConfiguration } from './rawDevelopment.ts';
-import { decodeRawTone, type RawTone } from './rawTone';
 export type RawDecoder = 'auto' | 'libraw' | 'candidate';
 
 export type FrameState = 'unprocessed' | 'processed' | 'stale';
@@ -26,7 +25,6 @@ export interface DecodeSettings {
   apply_camera_curve?: boolean;
   cameraCurve?: CameraCurveConfiguration;
   rawDecoder?: RawDecoder;
-  rawTone?: RawTone;
 }
 export const DECODE_DEFAULT: DecodeSettings = {
   whiteBalance: 'As Shot',
@@ -45,7 +43,6 @@ export interface Sidecar {
   geometry: Geometry;
   /** Per photograph viewing choice; never a film parameter or clipboard group. */
   noFilm: boolean;
-  filmStrength: number;
   /** The user's crop, restored when a film gate is switched off. */
   heldCrop?: Geometry | null;
   solvedEV?: number | null;
@@ -64,7 +61,6 @@ export function newSidecar(): Sidecar {
     adjustments: ADJUSTMENTS_DEFAULT,
     geometry: GEOMETRY_DEFAULT,
     noFilm: false,
-    filmStrength: 1,
     solvedEV: null,
     placementNeedsFit: false,
     state: 'unprocessed',
@@ -84,12 +80,11 @@ function decodeState(v: unknown): FrameState {
 
 export function decodeSidecar(raw: unknown): Sidecar {
   const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const carry = { ...o }; delete carry.spektraHistory; // UI history must not enter render/cache/portable-recipe identities.
   const d = o.decode && typeof o.decode === 'object' ? (o.decode as Record<string, unknown>) : {};
   let geometry = GEOMETRY_DEFAULT;
   if (o.geometry) geometry = decodeGeometry(o.geometry);
   else if (o.crop) geometry = decodeGeometry({ crop: o.crop });
-  const result:Sidecar = {
+  return {
     schemaVersion: 3,
     decoder: typeof o.decoder === 'string' ? o.decoder : 'coreimage',
     decode: {
@@ -101,23 +96,17 @@ export function decodeSidecar(raw: unknown): Sidecar {
       apply_camera_curve: d.apply_camera_curve === true,
       ...(['auto', 'libraw', 'candidate'].includes(String(d.rawDecoder)) ? { rawDecoder: d.rawDecoder as RawDecoder } : {}),
       ...(d.cameraCurve && typeof d.cameraCurve === 'object' ? { cameraCurve: d.cameraCurve as CameraCurveConfiguration } : {}),
-      ...(d.rawTone&&typeof d.rawTone==='object'?{rawTone:decodeRawTone(d.rawTone)}:{}),
     },
     params: o.params ? decodeFilmParams(o.params) : FILM_PARAMS_DEFAULT,
     adjustments: o.adjustments ? decodeAdjustments(o.adjustments) : ADJUSTMENTS_DEFAULT,
     geometry,
     noFilm: o.noFilm === true,
-    filmStrength: typeof o.filmStrength === 'number' && Number.isFinite(o.filmStrength) ? Math.max(0, Math.min(1, o.filmStrength)) : 1,
     heldCrop: o.heldCrop ? decodeGeometry(o.heldCrop) : null,
     solvedEV: typeof o.solvedEV === 'number' ? o.solvedEV : null,
     placementNeedsFit: o.placementNeedsFit === true,
     state: decodeState(o.state),
-    raw: carry,
+    raw: o,
   };
-  const oldParams=o.params&&typeof o.params==='object'?o.params as Record<string,unknown>:{};
-  const oldEdge=oldParams.filmEdge&&typeof oldParams.filmEdge==='object'?oldParams.filmEdge as Record<string,unknown>:{};
-  if(result.params.filmEdge.active&&oldEdge.followCrop===undefined&&result.heldCrop){result.geometry=result.heldCrop;result.heldCrop=null;}
-  return result;
 }
 
 /** Carry newer parameter keys without putting them on the engine wire.
@@ -143,8 +132,6 @@ export function encodeSidecar(s: Sidecar): Record<string, unknown> {
   out.geometry = encodeGeometry(s.geometry);
   if (s.noFilm) out.noFilm = true;
   else delete out.noFilm;
-  if (s.filmStrength !== 1) out.filmStrength = s.filmStrength;
-  else delete out.filmStrength;
   if (s.heldCrop) out.heldCrop = encodeGeometry(s.heldCrop);
   else delete out.heldCrop;
   if (s.solvedEV != null) out.solvedEV = s.solvedEV;
@@ -154,14 +141,4 @@ export function encodeSidecar(s: Sidecar): Record<string, unknown> {
   out.state = { [s.state]: {} };
   // `source` is written by the core from the file itself.
   return out;
-}
-
-/** DI codes and explicit source viewing do not contain a film-look blend. */
-export function filmStrengthWire(s: Pick<Sidecar, 'filmStrength' | 'noFilm' | 'params'>): { film_strength?: number } {
-  return !s.noFilm && !s.params.digitalIntermediate && s.filmStrength !== 1 ? { film_strength: s.filmStrength } : {};
-}
-
-/** Share edits without local source fingerprints, revision paths or history. */
-export function portableRecipe(s:Sidecar):Record<string,unknown> {
-  const value=encodeSidecar(s);delete value.source;delete value._spkRevision;delete value.spektraHistory;return value;
 }

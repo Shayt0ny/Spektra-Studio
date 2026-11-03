@@ -1,13 +1,5 @@
 [
  {
-  "name": "overscan_follow_crop",
-  "path": "film_render.overscan.follow_crop",
-  "type": "bool",
-  "layer": "shoot",
-  "live": false,
-  "default": false
- },
- {
   "name": "film_stock",
   "path": "film.info.stock",
   "type": "str",
@@ -904,38 +896,6 @@
    0.0,
    8.0
   ]
- },
- {
-  "name": "grain_blur",
-  "path": "film_render.grain.blur",
-  "type": "float",
-  "layer": "shoot",
-  "live": false,
-  "range": [0.0, 10.0]
- },
- {
-  "name": "enlarger_lens_blur",
-  "path": "enlarger.lens_blur",
-  "type": "float",
-  "layer": "print",
-  "live": false,
-  "range": [0.0, 20.0]
- },
- {
-  "name": "scanner_unsharp_radius",
-  "path": "scanner.unsharp_mask.0",
-  "type": "float",
-  "layer": "print",
-  "live": false,
-  "range": [0.0, 20.0]
- },
- {
-  "name": "scanner_unsharp_amount",
-  "path": "scanner.unsharp_mask.1",
-  "type": "float",
-  "layer": "print",
-  "live": false,
-  "range": [0.0, 4.0]
  },
  {
   "name": "preview_long_edge",

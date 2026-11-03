@@ -331,22 +331,6 @@ NATIVE_ONLY = {
         "path": "film_render.halation.headroom_ev", "type": "float", "layer": "shoot",
         "default": 4.0, "live": False, "range": [0.0, 8.0],
     },
-    "grain_blur": {
-        "path": "film_render.grain.blur", "type": "float", "layer": "shoot",
-        "default": 0.65, "live": False, "range": [0.0, 10.0],
-    },
-    "enlarger_lens_blur": {
-        "path": "enlarger.lens_blur", "type": "float", "layer": "print",
-        "default": 0.0, "live": False, "range": [0.0, 20.0],
-    },
-    "scanner_unsharp_radius": {
-        "path": "scanner.unsharp_mask.0", "type": "float", "layer": "print",
-        "default": 0.7, "live": False, "range": [0.0, 20.0],
-    },
-    "scanner_unsharp_amount": {
-        "path": "scanner.unsharp_mask.1", "type": "float", "layer": "print",
-        "default": 0.7, "live": False, "range": [0.0, 4.0],
-    },
 }
 
 

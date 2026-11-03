@@ -1,4 +1,5 @@
 #include "raw_tone.hpp"
+#include "raw_auto.hpp"
 #include <cstring>
 #include <iostream>
 using namespace spkhost;
@@ -19,5 +20,11 @@ int main(){try{
  RawColor balance(json("{\"colorBalance\":{\"master\":{\"hue\":0,\"saturation\":0.4}}}"));
  const auto warm=balance.apply({.18,.18,.18});check(warm[0]>.18&&warm[1]<.18&&std::abs(warm[1]-warm[2])<1e-10,"RAW colour balance did not independently shape source colour");
  for(const char* request:{"{\"hsl\":{\"red\":{\"hue\":31}}}","{\"colorBalance\":{\"master\":{\"saturation\":2}}}","{\"hsl\":5}"}){failed=false;try{RawTone bad(json(request));}catch(...){failed=true;}check(failed,"invalid RAW colour accepted");}
- std::cout<<"PASS RAW identity, linear exposure, HDR curves, HSL, colour balance and validation\n";return 0;
+ image.width=257;image.height=33;image.rgb.resize(size_t(image.width)*image.height*3,.18f);
+ check(raw_samples(image).size()==kRawSampleLimit*3,"automatic RAW samples exceeded their bound");
+ const auto automatic=raw_auto_curve({.01,.02,.03,.04,.05,.06,.07,.08,.09,.1,.11,.12,.13,.14,.15,.16,.17,.18,.19,.2,.21,.22,.23,.24,.25,.26,.27,.28,.29,.3,.4,.5,.7,1.,2.,4.});
+ RawToneCurve tested(automatic);check(tested.points.size()==7&&tested.points.front()==std::array<double,2>{0,0}&&tested.points.back()==std::array<double,2>{1,1},"automatic curve endpoints changed");
+ for(size_t i=1;i<tested.points.size();i++)check(tested.points[i][1]>tested.points[i-1][1],"automatic curve inverted tones");
+ failed=false;try{raw_auto_curve(std::vector<double>(64,.18));}catch(...){failed=true;}check(failed,"flat input should retain the current RAW curve");
+ std::cout<<"PASS RAW identity, linear exposure, HDR curves, HSL, colour balance, bounded auto samples/curve and validation\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

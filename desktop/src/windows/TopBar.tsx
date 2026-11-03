@@ -6,15 +6,13 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { BeforeAfter, Crop, Cursor, Export, Import, SidebarLeft, SidebarRight, ZoomIn, ZoomOut } from '../controls/icons';
 import { t, tz } from '../i18n';
-import { canMakePair, makePair, currentFitZoom, pairComplete, reloadExternalEdits, importRecipe, exportRecipe, setOriginal, setPages, setTool, solveNow, toggleCompare, useSession, zoomStep, zoomTo, zoomToFit } from '../state/session';
+import { canMakePair, makePair, currentFitZoom, pairComplete, reloadExternalEdits, setOriginal, setPages, setTool, solveNow, toggleCompare, useSession, zoomStep, zoomTo, zoomToFit } from '../state/session';
 import { settingsStore, useSettings } from '../state/settings';
 import { openDialog } from './actions';
-import { baseName,platform } from '../platform';
-import { exportCube } from '../export/exporter';
+import { baseName } from '../platform';
 import type { PreviewGamut } from '../canvas/colorSpace';
 import { sourceGeometryFor } from '@shared/filmEdge';
 import { RawDevelopmentControl } from './RawDevelopmentControl';
-import { openLighttable } from '../lighttable/launch';
 
 export function TopBar() {
   const leftCollapsed = useSettings((s) => s.leftCollapsed);
@@ -23,9 +21,6 @@ export function TopBar() {
   const displaySpace = useSession((s) => s.displaySpace);
   const tool = useSession((s) => s.tool);
   const selection = useSession((s) => s.selection);
-  const pair = useSession((s) => s.pair);
-  const hasFrames = useSession((s) => s.frames.length > 0);
-  const batch = useSession((s) => s.batchExporting);
   const engine = useSession((s) => s.engineSession);
   const developing = useSession((s) => s.developing);
   const original = useSession((s) => s.showingOriginal);
@@ -39,7 +34,6 @@ export function TopBar() {
   const view = useSession((s) => s.view);
   const native = useSession((s) => s.nativeSize);
   const hello = useSession((s) => s.hello);
-  const paper=useSession(s=>s.sidecar.params.printStock),hasPaperLut=useSession(s=>!!s.catalog.stock(s.sidecar.params.printStock)?.hasPreviewLUT);
   const zoomLocked = tool === 'crop';
   const fitZoom = useSession((s) => s.fitZoom);
   const pct = Math.round((view.fit ? fitZoom : view.zoom) * 100);
@@ -68,18 +62,6 @@ export function TopBar() {
           </button>
         </div>
         <div className="topbar-group">
-          <button className="pill-menu" data-testid="lighttable-button" disabled={!hasFrames || batch} onClick={openLighttable}
-            title={tz('Independent lighttable: browse, pick and compare photographs', '独立观片台：浏览、选片与双图比较')}>{tz('Lighttable', '观片台')}</button>
-          <DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="pill-menu" disabled={!selection || batch || !!pair} data-testid="recipe-menu">{tz('Presets / LUT', '预设／LUT')} ▾</button></DropdownMenu.Trigger>
-            <DropdownMenu.Portal><DropdownMenu.Content className="menu" sideOffset={4}>
-              <DropdownMenu.Item className="menu-item" disabled={!hello?.methods?.includes('read_recipe')} onSelect={() => void importRecipe()}>{tz('Import preset / recipe…', '导入预设／配方…')}</DropdownMenu.Item>
-              <DropdownMenu.Item className="menu-item" disabled={!hello?.methods?.includes('write_recipe')} onSelect={() => void exportRecipe()}>{tz('Save preset / recipe to share…', '保存预设／配方并分享…')}</DropdownMenu.Item>
-              <DropdownMenu.Separator className="hairline" />
-              <DropdownMenu.Item className="menu-item" disabled={!hello?.methods?.includes('export_cube')||!hasPaperLut}
-                onSelect={()=>void exportCube(paper,`${paper}.cube`).catch(e=>platform().message('Spektra Studio',String(e),'error'))}>{tz('Save paper LUT (.cube)…','保存相纸 LUT（.cube）…')}</DropdownMenu.Item>
-              <DropdownMenu.Label className="caption" style={{maxWidth:290,padding:8,whiteSpace:'normal'}}>{tz('Preset JSON restores Spektra edits. Paper LUT contains the paper conversion only; other software must supply the matching normalized negative-density input. It is not the complete final look.','预设 JSON 可在 Spektra 恢复编辑。相纸 LUT 仅包含相纸转换，其他软件需要匹配归一化负片密度输入；并非完整最终调色效果。')}</DropdownMenu.Label>
-            </DropdownMenu.Content></DropdownMenu.Portal>
-          </DropdownMenu.Root>
           <button className="pill-menu" disabled={!pairReady} onClick={() => void makePair()} title={tz(
             'Combine photos into a half-frame pair (Ctrl+J). Uses the first two selected photos in strip order; with one photo, add the second later. Source files stay unchanged.',
             '将照片拼成双图半格画面（Ctrl+J）。按胶片条顺序使用前两张已选照片；仅选一张时，可稍后添加第二张。原始文件不会修改。',

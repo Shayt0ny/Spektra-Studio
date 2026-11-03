@@ -15,6 +15,7 @@ import { FIT_VIEW, fittedImage, gridWindow, panBy, stripWindow, zoomAt, type Rev
 import './lighttable.css';
 import { useImage, useViewport, type Images } from './preview';
 import { FilmDesk, type DeskHandle } from './FilmDesk';
+import {defaultDeveloped,developedPreference} from './device';
 import { LibraryView } from './LibraryView';
 import { libraryStore, useLibrary } from './library';
 
@@ -132,7 +133,8 @@ export function Lighttable() {
 }
 function LighttableBody() {
   const s = useLighttable((state) => state), [images] = useState<Images>(() => ({ pool: new ReviewImagePool(), loader: reviewLoader() }));
-  const [developed, setDeveloped] = useState(false), [view, setView] = useState<ReviewView>(FIT_VIEW), [sync, setSync] = useState(true);
+  const [developed, setDevelopedState] = useState(()=>{const automatic=defaultDeveloped(sessionStore.getState().hello,(navigator as Navigator&{deviceMemory?:number}).deviceMemory,navigator.hardwareConcurrency);try{return developedPreference(localStorage,automatic);}catch{return automatic;}}), [view, setView] = useState<ReviewView>(FIT_VIEW), [sync, setSync] = useState(true);
+  const setDeveloped=(value:boolean)=>{setDevelopedState(value);try{localStorage.setItem('spektra.lighttable.developed',value?'on':'off');}catch{return;}}
   const [referenceView, setReferenceView] = useState<ReviewView>(FIT_VIEW), [immersive, setImmersive] = useState(false), [notice, setNotice] = useState('');
   const full = useRef<{ initial: boolean | null; work: Promise<void> }>({ initial: null, work: Promise.resolve() });
   const root = useRef<HTMLDivElement>(null), closingAction = useRef(false), desk = useRef<DeskHandle>(null);

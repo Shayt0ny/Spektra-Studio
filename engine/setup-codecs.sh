@@ -33,6 +33,3 @@ fetch libpng-1.6.59 libpng-1.6.59.tar.xz \
 fetch zlib-ng-2.3.3 zlib-ng-2.3.3.tar.gz \
  https://codeload.github.com/zlib-ng/zlib-ng/tar.gz/refs/tags/2.3.3 \
  f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1
-fetch libwebp-1.6.0 libwebp-1.6.0.tar.gz \
- https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz \
- e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564

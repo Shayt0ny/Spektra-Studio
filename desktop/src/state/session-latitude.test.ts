@@ -49,13 +49,6 @@ beforeEach(async () => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('Scene Placement lifecycle', () => {
-  it('applies the measured automatic suggestion in one undo step without changing profiles or Post-Dev', async () => {
-    await session.refreshLatitude(); const before = structuredClone(state().sidecar);
-    expect(session.autoPlaceScene()).toContain('Automatic placement applied');
-    expect(state().sidecar.params.sceneLatitude).toMatchObject({ active: true, highlightPullBack: 4, shadowPullBack: 0 });
-    expect(state().sidecar.adjustments).toEqual(before.adjustments); expect(state().sidecar.params.filmStock).toBe(before.params.filmStock);
-    expect(state().undo).toHaveLength(1); session.undo(); expect(state().sidecar.params.sceneLatitude).toEqual(before.params.sceneLatitude);
-  });
   it('clamps a slider with the measured window locally and sends the solved curve without another probe', async () => {
     await session.refreshLatitude();
     expect(session.placementReady()).toBe(true);

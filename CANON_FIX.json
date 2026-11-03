@@ -1,0 +1,5 @@
+{
+  "base": "1.3.4-win.8",
+  "fix": "Canon ColorData66 black/white field positions",
+  "date": "2026-10-31"
+}

@@ -65,8 +65,6 @@ import { inTauri } from '../host/transport';
 import { onFrameDrop } from '../windows/frameDrag';
 import { clampZoom } from './zoom';
 import { recoveryTextureLimit } from './displayUpload';
-import { LocalMaskOverlay } from './LocalMaskOverlay';
-import { lighttableStore } from '../lighttable/review';
 import { platform } from '../platform';
 
 const SURROUND = 0x5f / 255;
@@ -124,7 +122,6 @@ export function Canvas() {
   const [straightenLine, setStraightenLine] = useState<{ from: Point; to: Point } | null>(null);
   const [pairMenu, setPairMenu] = useState<{ x: number; y: number; side: PairSide } | null>(null);
   const uploaded = useRef({ print: null as unknown, original: null as unknown });
-  const latestDraw=useRef<DrawState|null>(null);
 
   const imageVersion = useSession((s) => s.imageVersion);
   const geometry = useSession((s) => s.sidecar.geometry);
@@ -138,7 +135,6 @@ export function Canvas() {
   const comparing = useSession((s) => s.comparing);
   const comparePosition = useSession((s) => s.comparePosition);
   const showingOriginal = useSession((s) => s.showingOriginal);
-  const rawEditing = useSession((s) => s.rawEditing);
   const badge = useSession((s) => s.badge);
   const developing = useSession((s) => s.developing);
   const lastError = useSession((s) => s.lastError);
@@ -154,7 +150,7 @@ export function Canvas() {
   const pairGates = showingOriginal && pair ? pairRects(pair) : pairCanvasRects();
   const framing = cropping && geometryInNegative(params, gate, noFilm);
   const filmCanvas = !originalFallback && !cropping && !showingOriginal && !!sourceGeometryFor(params, geometry, gate, noFilm);
-  const canvasGeometry = rawEditing || originalFallback ? GEOMETRY_DEFAULT : filmCanvas ? canvasGeometryFor(params, geometry, gate, noFilm) : geometry;
+  const canvasGeometry = originalFallback ? GEOMETRY_DEFAULT : filmCanvas ? canvasGeometryFor(params, geometry, gate, noFilm) : geometry;
 
   useEffect(() => {
     const c = canvas.current;
@@ -248,7 +244,7 @@ export function Canvas() {
     return () => ro.disconnect();
   }, []);
 
-  const native = rawEditing ? nativeSize : originalFallback ? (frameImages.original!.nativeSize ?? { width: frameImages.original!.width, height: frameImages.original!.height })
+  const native = originalFallback ? (frameImages.original!.nativeSize ?? { width: frameImages.original!.width, height: frameImages.original!.height })
     : (filmCanvas ? frameImages.print?.nativeSize : nativeSize) ?? (frameImages.print ? { width: frameImages.print.width, height: frameImages.print.height } : null);
   const layout =
     native && size.width > 0
@@ -317,7 +313,7 @@ export function Canvas() {
       split: comparePosition,
       surround: SURROUND,
     };
-    latestDraw.current=state;r.draw(state);
+    r.draw(state);
     notePreviewDrawn();
   }, [glVersion, imageVersion, displaySpace, layout?.zoom, layout?.offset.x, layout?.offset.y, size, geometry, adjustments, cropping, framing, comparing, comparePosition, showingOriginal, originalFallback, layout]);
 
@@ -345,7 +341,7 @@ export function Canvas() {
         editingCrop: null,
         sourceSize: native,
         adjustments,
-        compare: rawEditing || originalFallback || framing ? 2 : 0,
+        compare: originalFallback || framing ? 2 : 0,
         split: 0.5,
         surround: SURROUND,
       };
@@ -356,11 +352,23 @@ export function Canvas() {
       else setHistogram(null);
       // `renderOutput` leaves the default framebuffer bound but the canvas
       // must be redrawn with its own viewport.
-      if (latestDraw.current)r.draw(latestDraw.current);
+      if (layout)
+        r.draw({
+          viewport: layout.viewport,
+          offset: layout.offset,
+          outSize: layout.outSize,
+          display: layout.display,
+          editingCrop: cropping ? geometry : null,
+          sourceSize: layout.native,
+          adjustments,
+          compare: originalFallback || framing || showingOriginal ? 2 : comparing ? 1 : 0,
+          split: comparePosition,
+          surround: SURROUND,
+        });
     }, 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [glVersion, imageVersion, displaySpace, geometry, adjustments, native?.width, native?.height, exportOpen, framing, filmCanvas, rawEditing]);
+  }, [glVersion, imageVersion, displaySpace, geometry, adjustments, native?.width, native?.height, exportOpen, framing, filmCanvas]);
 
   // ---- pointer
   const drag = useRef<
@@ -516,14 +524,12 @@ export function Canvas() {
   // Space held: the original (one draw).
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (lighttableStore.getState().open) return;
       if (e.code === 'Space' && !e.repeat && !isTyping(e.target)) {
         e.preventDefault();
         setOriginal(true);
       }
     };
     const up = (e: KeyboardEvent) => {
-      if (lighttableStore.getState().open) return;
       if (e.code === 'Space') setOriginal(false);
     };
     window.addEventListener('keydown', down);
@@ -559,7 +565,6 @@ export function Canvas() {
       data-testid="canvas"
     >
       <canvas key={canvasGeneration} ref={canvas} className="canvas-gl" />
-      {layout&&!cropping&&!showingOriginal&&!comparing&&<LocalMaskOverlay layout={layout} dpr={size.dpr}/>}
       {pair && pairGates && layout && <svg className="crop-overlay" width="100%" height="100%" data-testid="pair-overlay">
         {PAIR_SIDES.map((side) => {
           const r = pairGates[side], x = css(layout.offset.x + r.x * layout.outSize.width), y = css(layout.offset.y + r.y * layout.outSize.height);
@@ -615,12 +620,12 @@ export function Canvas() {
           {tz(`Display detail is limited to ${maxTextureSize} pixels. Export keeps the chosen resolution.`,
             `当前显示最多 ${maxTextureSize} 像素；导出仍使用所选分辨率。`)}
         </span>}
-        {originalFallback && !rawEditing && selection && <span className="tier-badge preview" data-testid="camera-preview-badge">
+        {originalFallback && selection && <span className="tier-badge preview" data-testid="camera-preview-badge">
           {developing ? tz('Camera preview · loading film effect', '原图预览 · 正在加载胶片效果')
             : lastError ? tz('Camera preview · film effect failed to load', '原图预览 · 胶片效果加载失败')
               : tz('Camera preview', '原图预览')}
         </span>}
-        {(!originalFallback || rawEditing) && badge && selection && (
+        {!originalFallback && badge && selection && (
           <span className={'tier-badge ' + badge} data-testid="tier-badge" title={badge === 'full' ? tz('Rendered from the full-resolution source; display detail follows zoom', '已完成原尺寸渲染；显示精细度随缩放调整') : tz('Preview resolution — the frame’s own is on its way', '预览分辨率——全尺寸正在渲染')}>
             {badge === 'full' ? 'full' : 'preview'}
           </span>

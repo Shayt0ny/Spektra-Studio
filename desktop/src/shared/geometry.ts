@@ -440,13 +440,11 @@ export function constrained(g: Geometry, image: Size, anchor: Point = { x: 0.5, 
     ...g,
     crop: { x: x1 - (nw / w) * anchor.x, y: y1 - (nh / h) * anchor.y, width: nw / w, height: nh / h },
   };
-  return { ...fitted(out, image), intendedSize: { width: out.crop.width, height: out.crop.height } };
+  return rememberingSize(fitted(out, image));
 }
 
 export function withAspect(g: Geometry, aspect: CropAspect, image: Size): Geometry {
-  const c=centre(g),remember=aspectCanonical(aspect)===aspectCanonical(g.aspect)&&g.intendedSize;
-  const crop=remember?{x:c.x-remember.width/2,y:c.y-remember.height/2,width:remember.width,height:remember.height}:g.crop;
-  return constrained({ ...g, crop, aspect, lockedRatio: null }, image);
+  return constrained({ ...g, aspect, lockedRatio: null }, image);
 }
 
 export type CropHandle = 'topLeft' | 'top' | 'topRight' | 'right' | 'bottomRight' | 'bottom' | 'bottomLeft' | 'left' | 'body';

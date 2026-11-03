@@ -26,7 +26,7 @@ test('albums share records, linked filters narrow a fixed review range and origi
 });
 test('lens diameter and magnification are independent and only its local canvas is distorted', async ({ page }) => {
   await page.goto('/?open='); await expect(page.getByTestId('tier-badge')).toHaveText('full', { timeout: 25000 });
-  await page.getByTestId('lighttable-button').click(); await page.getByTestId('lt-desk-loupe-toggle').click();
+  await page.getByTestId('lighttable-button').click(); await page.getByTestId('lt-desk-tools-toggle').click(); await page.getByTestId('lt-desk-loupe-toggle').click();
   const film = page.locator('[data-testid="lt-film"][aria-pressed="true"]'), box = (await film.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); const lens = page.getByTestId('lt-desk-loupe');
   await expect(lens).toBeVisible(); const diameter = await lens.getAttribute('data-diameter');

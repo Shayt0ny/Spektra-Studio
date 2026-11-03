@@ -12,7 +12,6 @@
 // second implementation of any of it.
 
 #include <algorithm>
-#include "raw_tone.hpp"
 #include <fstream>
 #include <iterator>
 #include <atomic>
@@ -435,7 +434,7 @@ Json m_hello(const Request&) {
     for (const char* m : {"hello", "ping", "shutdown", "params_schema", "print_lut_catalog", "memory_report",
                           "probe", "thumbnail", "open", "redecode", "close", "set_params", "get_params", "solve", "render",
                           "scene_latitude", "overscan_geometry", "preview_stock_lut", "cancel", "progress", "open_pair", "update_pair",
-                          "export_image", "export_cube", "export_di", "export_cineon", "write_image", "render_view", "export_frame", "render_proof", "render_source", "pick_neutral", "camera_profile", "copy_original", "read_recipe", "write_recipe", "auto_raw"})
+                          "export_image", "export_cube", "export_di", "export_cineon", "write_image", "render_view", "export_frame", "render_proof", "render_source", "pick_neutral", "camera_profile"})
         methods.push(str(m));
     r.set("methods", std::move(methods));
     Json view_formats = Json::array(); view_formats.push(str("rgba8")); view_formats.push(str("rgba16"));
@@ -445,21 +444,13 @@ Json m_hello(const Request&) {
     Json raw_decoders = Json::array();
     for (const char* decoder : {"auto", "libraw", "candidate"}) raw_decoders.push(str(decoder));
     r.set("raw_decoders", std::move(raw_decoders));
-    Json view_options = Json::array(); view_options.push(str("no_film")); view_options.push(str("camera_curve")); view_options.push(str("lcp")); view_options.push(str("local_masks"));
-    view_options.push(str("film_strength"));
-    view_options.push(str("hsl_texture"));
-    view_options.push(str("raw_tone"));
-    view_options.push(str("raw_color"));
-    view_options.push(str("crop_frame"));
+    Json view_options = Json::array(); view_options.push(str("no_film")); view_options.push(str("camera_curve")); view_options.push(str("lcp"));
     r.set("view_options", std::move(view_options));
     Json frame_options = Json::array(); frame_options.push(str("no-film"));
     r.set("frame_options", std::move(frame_options));
     Json spaces = Json::array();
     for (const char* space : {"sRGB", "display-p3", "prophoto", "adobe-rgb", "rec2020"}) spaces.push(str(space));
     r.set("export_spaces", std::move(spaces));
-    Json export_formats = Json::array();
-    for (const char* format : {"tiff16", "tiff8", "png", "png16", "jpeg", "webp-lossless"}) export_formats.push(str(format));
-    r.set("export_formats", std::move(export_formats));
     Json tiff_options = Json::array();
     tiff_options.push(str("lzw")); tiff_options.push(str("preview-page"));
     r.set("tiff_options", std::move(tiff_options));
@@ -626,9 +617,6 @@ DecodeOptions decode_options(const Json& decode) {
         } else if (kv.first == "camera_profile") {
             if(!kv.second.is_object()||kv.second.dump().size()>8*1024*1024)throw HostError{"bad_request","invalid camera_profile"};
             options.camera_profile=kv.second;
-        } else if (kv.first == "raw_tone") {
-            try { RawTone check(kv.second); } catch(const std::exception& e) { throw HostError{"bad_request",e.what()}; }
-            options.raw_tone=kv.second;
         } else {
             throw HostError{"unsupported", "decode." + kv.first + " is not supported by this host"};
         }
@@ -673,38 +661,8 @@ Decoded decode_frame(const fs::path& path, const DecodeOptions& options) {
         throw HostError{"decode_failed", error};
     }
     camera_curve_after_decode(d.frame,d.probe,options);
-    try { RawTone(options.raw_tone).apply(d.frame); } catch(const std::exception& e) { throw HostError{"bad_request",e.what()}; }
     d.decode_ms = ms_since(t0);
     return d;
-}
-
-Json m_auto_raw(const Request& q) {
-    auto s=find_session(q.params);if(s->pair_source||!s->raw_metadata)throw HostError{"unsupported","automatic RAW adjustment requires a single RAW photograph"};
-    const auto mode=optional_string(q.params,"mode","tone");if(mode!="tone"&&mode!="white_balance")throw HostError{"bad_request","auto_raw mode must be tone or white_balance"};
-    DecodeOptions options=s->decode;options.raw_tone=Json();if(mode=="white_balance")options.apply_camera_curve=false;
-    auto base=decode_frame(utf8_path(s->path),options); // one owned decode, released at reply; no change to resident session
-    std::vector<double> luminance;std::array<double,3> mean{};size_t count=0;
-    const size_t pixels=base.frame.rgb.size()/3,step=std::max(size_t(1),pixels/8192);
-    for(size_t p=0;p<pixels;p+=step){const float* rgb=base.frame.rgb.data()+p*3;double y=.28804*rgb[0]+.711874*rgb[1]+.000086*rgb[2];
-        if(!std::isfinite(y)||y<=1e-7)continue;luminance.push_back(y);
-        const double low=std::min({rgb[0],rgb[1],rgb[2]}),high=std::max({rgb[0],rgb[1],rgb[2]});
-        if(low>.005&&high<.95&&high<low*4){for(size_t ch=0;ch<3;ch++)mean[ch]+=rgb[ch];count++;}}
-    if(luminance.size()<16)throw HostError{"bad_request","not enough usable RAW samples"};
-    Json result=Json::object();result.set("samples",number(luminance.size()));
-    if(mode=="white_balance"){
-        if(count<16)throw HostError{"bad_request","no reliable middle-tone sample; use neutral picker"};
-        for(double& v:mean)v/=count;double temperature=0,tint=0;std::string error;
-        if(!neutral_temperature_tint(*base.frame.raw_metadata,mean,temperature,tint,error))throw HostError{"bad_request",error};
-        result.set("temperature_k",number(std::clamp(temperature,2000.,50000.)));result.set("tint",number(std::clamp(tint,-150.,150.)));
-    } else {
-        std::sort(luminance.begin(),luminance.end());auto percentile=[&](double p){return luminance[size_t((luminance.size()-1)*p)];};
-        const double exposure=std::clamp(std::log2(.18/percentile(.5)),-2.,2.),white=percentile(.995)*std::exp2(exposure),shadow=percentile(.05)*std::exp2(exposure);
-        Json tone=Json::object();tone.set("exposure",number(exposure));tone.set("contrast",number(0));
-        tone.set("highlights",number(white>1?std::clamp(-std::log2(white)*50,-80.,0.):0));
-        tone.set("shadows",number(shadow<.012?std::clamp(std::log2(.012/std::max(shadow,1e-6))*15,0.,50.):0));
-        tone.set("whites",number(0));tone.set("blacks",number(0));result.set("raw_tone",std::move(tone));
-    }
-    return result;
 }
 
 spk_session* engine_open(const FloatImage& frame, const std::string& delta, Json& opened, double& open_ms) {
@@ -790,7 +748,6 @@ Json pair_decode_wire(const Json& settings) {
     if (settings.has("lensProfile")) wire.set("lens_profile", settings.at("lensProfile"));
     if (settings.has("apply_camera_curve")) wire.set("apply_camera_curve",settings.at("apply_camera_curve"));
     if (settings.has("rawDecoder")) wire.set("raw_decoder",settings.at("rawDecoder"));
-    if (settings.has("rawTone")) wire.set("raw_tone",settings.at("rawTone"));
     if (settings.at("cameraCurve").has("profile")) wire.set("camera_profile",settings.at("cameraCurve").at("profile"));
     const std::string mode = optional_string(settings, "whiteBalance", "As Shot");
     Json wb = Json::object(); wb.set("mode", str(mode == "As Shot" ? "as_shot" : "custom"));
@@ -833,7 +790,7 @@ Json m_pair(const Request& q, bool updating, bool parent_running = false) {
         check_cancelled();spk::view::trim_idle_memory(g.engine);
         const auto options=decode_options(pair_decode_wire(settings));
         if(!decode_linear_prophoto(file,options,image,probe,why))return false;
-        camera_curve_after_decode(image,probe,options);RawTone(options.raw_tone).apply(image);return true;
+        camera_curve_after_decode(image,probe,options);return true;
     };
     auto meter=[&](const FloatImage& image,const std::string& method) {
         Json probe=params;probe.set("auto_exposure",Json(true));probe.set("auto_exposure_method",str(method));
@@ -960,10 +917,6 @@ spk::view::Request view_request(const Json& p, bool exporting) {
     if (p.has("geometry")) r.geometry = p.at("geometry");
     if (p.has("no_film") && !p.at("no_film").is_bool()) throw HostError{"bad_request", "no_film must be a boolean"};
     r.no_film = p.at("no_film").as_bool(false);
-    if (p.has("film_strength") && (!p.at("film_strength").is_number() || !std::isfinite(p.at("film_strength").as_double()) ||
-        p.at("film_strength").as_double() < 0 || p.at("film_strength").as_double() > 1))
-        throw HostError{"bad_request", "film_strength must be within 0..1"};
-    r.film_strength = p.at("film_strength").as_double(1.0);
     const int edge = p.at("long_edge").as_int(0);
     if (edge < 0 || edge > 65536) throw HostError{"bad_request", "long_edge must be between 0 and 65536"};
     r.long_edge = uint32_t(edge);
@@ -1164,12 +1117,12 @@ Json m_pick_neutral(const Request& q) {
     spk::view::SourceSample sample; std::string error;
     if(s->pair_source && (s->pair.at("left").at("decode").at("apply_camera_curve").as_bool() || s->pair.at("right").at("decode").at("apply_camera_curve").as_bool()))
         throw HostError{"unsupported","pick neutral on the individual RAW before applying its camera curve to a pair"};
-    if((s->decode.apply_camera_curve || RawTone(s->decode.raw_tone).active) && !s->pair_source) {
+    if(s->decode.apply_camera_curve && !s->pair_source) {
         // A camera curve is not invertible. Read the pre-curve linear patch
         // on demand instead of inferring WB from already coloured pixels.
         const double nx=x.as_double(),ny=y.as_double();
         if(!std::isfinite(nx)||!std::isfinite(ny)||nx<0||nx>1||ny<0||ny>1)throw HostError{"bad_request","invalid neutral coordinates"};
-        auto options=s->decode;options.apply_camera_curve=false;options.raw_tone=Json();
+        auto options=s->decode;options.apply_camera_curve=false;
         FloatImage linear;Probe probe;
         if(!decode_linear_prophoto(utf8_path(s->path),options,linear,probe,error))throw HostError{"decode_failed",error};
         const int cx=std::min(int(linear.width)-1,int(nx*linear.width)),cy=std::min(int(linear.height)-1,int(ny*linear.height));
@@ -1320,13 +1273,12 @@ void encode_file(const OutputTransform& t, std::vector<float>& lin, uint32_t w, 
                  const std::string& format, int quality, const std::vector<uint8_t>& icc, std::vector<uint8_t>& out,
                  const Exif* exif) {
     std::string error;
-    if (format == "tiff16" || format == "png16") {
+    if (format == "tiff16") {
         std::vector<uint16_t> rgba;
         t.encode_rgba16(lin, rgba);
         std::vector<uint16_t> rgb(size_t(w) * h * 3);
         for (size_t p = 0; p < size_t(w) * h; ++p) for (int c = 0; c < 3; ++c) rgb[p * 3 + c] = rgba[p * 4 + c];
-        const bool ok = format == "png16" ? encode_png16(rgb.data(), w, h, icc, out, error, exif) : encode_tiff(rgb.data(), w, h, 16, icc, out, error, exif);
-        if (!ok) throw HostError{"io_error", error};
+        if (!encode_tiff(rgb.data(), w, h, 16, icc, out, error, exif)) throw HostError{"io_error", error};
         return;
     }
     std::vector<uint8_t> rgba;
@@ -1337,14 +1289,13 @@ void encode_file(const OutputTransform& t, std::vector<float>& lin, uint32_t w, 
     if (format == "tiff8") ok = encode_tiff(rgb.data(), w, h, 8, icc, out, error, exif);
     else if (format == "png") ok = encode_png8(rgb.data(), w, h, icc, out, error, exif);
     else if (format == "jpeg") ok = encode_jpeg(rgb.data(), w, h, quality, icc, out, error, exif);
-    else if (format == "webp-lossless") ok = encode_webp_lossless(rgb.data(), w, h, icc, out, error, exif);
     else throw HostError{"bad_request", "format must be tiff16, tiff8, jpeg or png"};
     if (!ok) throw HostError{"io_error", error};
 }
 
 void check_format(const std::string& format) {
-    if (format != "tiff16" && format != "tiff8" && format != "jpeg" && format != "png" && format != "png16" && format != "webp-lossless")
-        throw HostError{"bad_request", "format must be tiff16, tiff8, jpeg, png, png16 or webp-lossless"};
+    if (format != "tiff16" && format != "tiff8" && format != "jpeg" && format != "png")
+        throw HostError{"bad_request", "format must be tiff16, tiff8, jpeg or png"};
 }
 
 void shrink_to(std::vector<float>& lin, uint32_t& w, uint32_t& h, uint32_t long_edge) {
@@ -1394,7 +1345,7 @@ Json m_export_frame(const Request& q, std::vector<uint8_t>* proof_payload = null
     if (req.no_film && (q.params.has("pair") || q.params.at("params").at("overscan_pair").as_bool()))
         throw HostError{"bad_request", "no_film is unavailable for a half-frame pair"};
     req.output_channels = 3;
-    req.rgba16 = cineon || format == "tiff16" || format == "png16";
+    req.rgba16 = cineon || format == "tiff16";
     if (proof_payload) {
         const auto& edge = q.params.at("proof_long_edge");
         if (!edge.is_number() || edge.as_double() < 1 || edge.as_double() > 4096 || edge.as_double() != edge.as_int())
@@ -1423,7 +1374,7 @@ Json m_export_frame(const Request& q, std::vector<uint8_t>* proof_payload = null
             if (requested.raw_mode != s->decode.raw_mode || requested.temperature_k != s->decode.temperature_k ||
                 requested.tint != s->decode.tint || requested.lens_correction != s->decode.lens_correction ||
                 requested.lens_profile.dump() != s->decode.lens_profile.dump() ||
-                requested.raw_decoder != s->decode.raw_decoder || requested.raw_tone.dump()!=s->decode.raw_tone.dump() ||
+                requested.raw_decoder != s->decode.raw_decoder ||
                 requested.apply_camera_curve != s->decode.apply_camera_curve ||
                 (requested.apply_camera_curve && requested.camera_profile.dump()!=s->decode.camera_profile.dump())) {
                 // A pending UI redecode must not silently export older white balance.
@@ -1582,8 +1533,6 @@ Json m_export_frame(const Request& q, std::vector<uint8_t>* proof_payload = null
         else if (format == "jpeg") encoded = encode_jpeg_file(file, v.pixels.data(), v.width, v.height,
             q.params.at("quality").as_int(92), icc, why, &exif);
         else if (format == "png") encoded = encode_png8_file(file, v.pixels.data(), v.width, v.height, icc, why, &exif);
-        else if (format == "png16") encoded = encode_png16_file(file, reinterpret_cast<const uint16_t*>(v.pixels.data()), v.width, v.height, icc, why, &exif);
-        else if (format == "webp-lossless") encoded = encode_webp_lossless_file(file, v.pixels.data(), v.width, v.height, icc, why, &exif);
         else encoded = encode_tiff_file(file, v.pixels.data(),
             v.width, v.height, format == "tiff16" ? 16 : 8, icc, tiff_options, why, &exif);
         check_cancelled(); // cancellation during compression never commits a partial file
@@ -1671,17 +1620,16 @@ Json m_write_image(const Request& q) {
     const size_t pixels = size_t(w) * h;
     auto sample = [&](size_t i) { return uint16_t(q.payload[2 * i] | (q.payload[2 * i + 1] << 8)); };
     bool ok;
-    if (format == "tiff16" || format == "png16") {
+    if (format == "tiff16") {
         std::vector<uint16_t> rgb(pixels * 3);
         for (size_t p = 0; p < pixels; ++p) for (int c = 0; c < 3; ++c) rgb[p * 3 + c] = sample(p * 4 + c);
-        ok = format == "png16" ? encode_png16(rgb.data(), uint32_t(w), uint32_t(h), icc, bytes, error, ex) : encode_tiff(rgb.data(), uint32_t(w), uint32_t(h), 16, icc, bytes, error, ex);
+        ok = encode_tiff(rgb.data(), uint32_t(w), uint32_t(h), 16, icc, bytes, error, ex);
     } else {
         std::vector<uint8_t> rgb(pixels * 3);
         for (size_t p = 0; p < pixels; ++p)
             for (int c = 0; c < 3; ++c) rgb[p * 3 + c] = uint8_t((uint32_t(sample(p * 4 + c)) * 255 + 32767) / 65535);
         if (format == "tiff8") ok = encode_tiff(rgb.data(), uint32_t(w), uint32_t(h), 8, icc, bytes, error, ex);
         else if (format == "png") ok = encode_png8(rgb.data(), uint32_t(w), uint32_t(h), icc, bytes, error, ex);
-        else if (format == "webp-lossless") ok = encode_webp_lossless(rgb.data(), uint32_t(w), uint32_t(h), icc, bytes, error, ex);
         else ok = encode_jpeg(rgb.data(), uint32_t(w), uint32_t(h), quality, icc, bytes, error, ex);
     }
     if (!ok) throw HostError{"io_error", error};
@@ -1691,56 +1639,6 @@ Json m_write_image(const Request& q) {
     return r;
 }
 
-Json m_copy_original(const Request& q) {
-    const auto source = utf8_path(require_string(q.params, "source_path")), target = utf8_path(require_string(q.params, "path"));
-    const auto recipe_path = utf8_path(path_utf8(target) + ".spektra-recipe.json");
-    if (q.params.at("overwrite").as_bool()) throw HostError{"bad_request", "original copies never overwrite existing files"};
-    if (!q.params.at("recipe").is_object()) throw HostError{"bad_request", "original copy requires its immutable Spektra recipe"};
-    std::error_code ec;
-    if (fs::exists(target, ec) || fs::exists(recipe_path, ec)) throw HostError{"io_error", "copy destination or companion recipe already exists"};
-    if (!fs::is_regular_file(source, ec)) throw HostError{"io_error", "original is not a readable regular file"};
-    Probe probe; std::string error;
-    if (!probe_file(source, probe, error)) throw HostError{"io_error", error};
-    Running running("", optional_string(q.params, "progress_id")); check_cancelled();
-    const auto size = fs::file_size(source, ec); if (ec) throw HostError{"io_error", "cannot stat original"};
-    const auto stamp = fs::last_write_time(source, ec); if (ec) throw HostError{"io_error", "cannot inspect original timestamp"};
-    Json envelope = Json::object(); envelope.set("type", str("SpektraRecipe")); envelope.set("version", number(1));
-    envelope.set("source_name", str(path_utf8(target.filename()))); envelope.set("source_bytes", number(double(size)));
-    envelope.set("sidecar", q.params.at("recipe"));
-    const auto text = envelope.dump(); const std::vector<uint8_t> recipe(text.begin(), text.end());
-    if (!write_file_atomic(recipe_path, recipe, false, error)) throw HostError{"io_error", error};
-    try {
-        const bool ok = write_file_atomic(target, [&](std::FILE* out, std::string& why) {
-            std::ifstream in(source, std::ios::binary); if (!in) { why = "cannot open original"; return false; }
-            std::vector<char> chunk(1024 * 1024); uint64_t copied = 0;
-            while (in) { check_cancelled(); in.read(chunk.data(), chunk.size()); const auto count = in.gcount();
-                if (count && std::fwrite(chunk.data(), 1, size_t(count), out) != size_t(count)) { why = "original copy write failed"; return false; }
-                copied += uint64_t(count);
-            }
-            check_cancelled();
-            if (in.bad() || copied != size || fs::file_size(source) != size || fs::last_write_time(source) != stamp) { why = "original changed or became unreadable while copying"; return false; }
-            return true;
-        }, false, error);
-        if (!ok) throw HostError{"io_error", error};
-    } catch (...) { fs::remove(recipe_path, ec); throw; }
-    auto reply = written(target, probe.width, probe.height, size, "original bytes"); reply.set("recipe_path", str(path_utf8(recipe_path))); return reply;
-}
-Json m_read_recipe(const Request& q) {
-    const auto path = utf8_path(require_string(q.params, "path")); std::error_code ec;
-    const auto size = fs::file_size(path, ec); if (ec || size > 8 * 1024 * 1024) throw HostError{"bad_request", "recipe must be a readable JSON file below 8 MiB"};
-    std::ifstream input(path, std::ios::binary); const std::string text((std::istreambuf_iterator<char>(input)), {}); Json value; std::string error;
-    if (!Json::parse(text, value, error) || value.at("type").as_string() != "SpektraRecipe" || value.at("version").as_int() != 1 || !value.at("sidecar").is_object())
-        throw HostError{"bad_request", "not a supported Spektra recipe document"};
-    return value;
-}
-Json m_write_recipe(const Request& q) {
-    const auto path = utf8_path(require_string(q.params, "path")); const auto& recipe = q.params.at("recipe");
-    if (!recipe.is_object()) throw HostError{"bad_request", "recipe must be an object"};
-    Json value = Json::object(); value.set("type", str("SpektraRecipe")); value.set("version", number(1)); value.set("sidecar", recipe);
-    const auto text = value.dump(); std::string error;
-    if (!write_file_atomic(path, std::vector<uint8_t>(text.begin(), text.end()), false, error)) throw HostError{"io_error", error};
-    return written(path, 0, 0, text.size(), "recipe");
-}
 Json m_export_cube(const Request& q) {
     need_engine();
     const std::string stock = require_string(q.params, "print_stock");
@@ -1806,11 +1704,7 @@ void dispatch(const Request& q) {
     else if (m == "render_source") result = m_render_source(q, payload);
     else if (m == "camera_profile") result = m_camera_profile(q);
     else if (m == "pick_neutral") result = m_pick_neutral(q);
-    else if (m == "auto_raw") result = m_auto_raw(q);
     else if (m == "export_frame") result = m_export_frame(q);
-    else if (m == "copy_original") result = m_copy_original(q);
-    else if (m == "read_recipe") result = m_read_recipe(q);
-    else if (m == "write_recipe") result = m_write_recipe(q);
     else if (m == "export_cineon") result = m_export_frame(q, nullptr, true);
     else if (m == "render_proof") result = m_export_frame(q, &payload);
     else if (m == "scene_latitude") result = m_scene_latitude(q);

@@ -1,0 +1,8 @@
+WebView2Loader.dll (x64) is the existing WebView2 dependency required by the
+GNU-target build of the Tauri frontend. It is bundled from webview2-com-sys
+0.39.1, pinned by desktop/src-tauri/Cargo.lock. It loads the Microsoft Edge
+WebView2 Runtime installed on Windows; it does not install a runtime.
+
+Project: https://github.com/wravery/webview2-rs
+Package: https://crates.io/crates/webview2-com-sys/0.39.1
+Microsoft WebView2: https://developer.microsoft.com/microsoft-edge/webview2/

@@ -11,7 +11,6 @@ import { installKeys, webviewOwnsMenuKeys } from './windows/keys';
 import { MENU_CHORDS, installMenu } from './windows/menus';
 import { inTauri } from './host/transport';
 import { useSettings } from './state/settings';
-import { installReviewCloseGuard } from './lighttable/launch';
 
 function applySettings() {
   const s = settingsStore.getState();
@@ -50,7 +49,6 @@ createRoot(document.getElementById('root')!).render(
 );
 
 void boot();
-void installReviewCloseGuard().catch((error: unknown) => console.error('review close guard', error));
 
 // For the layout harness and for debugging from the webview inspector.
 import { sessionStore } from './state/session';

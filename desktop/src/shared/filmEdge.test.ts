@@ -42,7 +42,7 @@ describe('the camera gate and date back contract', () => {
     expect(resolved).toMatchObject({ filmEdge: { edgeText: 'KODAK 400TX', fNumber: 4 }, dateBack: { text: "'26 10 1", framing: expect.any(String) } });
   });
   it('holds a physical gate ratio, with post geometry identity and original crop retained in the sidecar', () => {
-    const p = { ...FILM_PARAMS_DEFAULT, filmEdge: { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, followCrop:false, format: '135_half' } };
+    const p = { ...FILM_PARAMS_DEFAULT, filmEdge: { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format: '135_half' } };
     const g = gateFramed(crop, p.filmEdge, native);
     expect(g.crop.width * native.width / (g.crop.height * native.height)).toBeCloseTo(4 / 3, 8);
     expect(sourceGeometryFor(p, g)).toBe(g);

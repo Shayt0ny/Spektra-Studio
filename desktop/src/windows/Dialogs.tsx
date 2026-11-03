@@ -149,7 +149,8 @@ export function SettingsDialog() {
                 }}
               />
               <div className="caption">{tz('Whether cropping changes the physical scale of grain, halation and glare. Off — the default, and the physically true answer — the crop shows less of the same negative.', '裁剪是否改变颗粒、光晕与耀光的物理尺度。关闭（默认，也是物理上正确的做法）时，裁剪只是看到同一张负片的更小部分。')}</div>
-              <div className="caption">{tz('Grain, halation and glare strength are always visible under Pre-Dev → Film effects.','颗粒、光晕和耀光强度固定显示在“显影前 → 胶片效果”，无需开启额外设置。')}</div>
+              <ToggleRow label={tz('Decouple effects', '分离效果强度')} on={st.decoupleEffects} onChange={(v) => set('decoupleEffects', v)} />
+              <div className="caption">{tz('Show a strength for each film effect beside its switch. The strengths belong to the frame: turning this off hides the sliders and changes no picture.', '在每个胶片效果的开关旁显示强度滑块。强度属于照片本身：关闭此项只会隐藏滑块，不会改变任何画面。')}</div>
             </div>
             <div className="settings-group">
               <h3>{tz('Digital Intermediate', '数字中间片')}</h3>
@@ -246,7 +247,7 @@ export function AboutDialog() {
     if (!open) return;
     void platform().appPaths().then(setPaths);
     void Promise.all(
-      ['SpektraLab-GPL-3.0.txt', 'Profiles-and-LUTs-CC-BY-SA-4.0.txt', 'README.txt', 'RawTherapee-NOTICE.txt', 'Nikon-HE-NOTICE.txt', 'Photo-All-NOTICE.txt'].map(async (name) => {
+      ['SpektraLab-GPL-3.0.txt', 'Profiles-and-LUTs-CC-BY-SA-4.0.txt', 'README.txt', 'RawTherapee-NOTICE.txt', 'Nikon-HE-NOTICE.txt'].map(async (name) => {
         try {
           const r = await fetch('assets/licenses/' + name);
           return { name, body: r.ok ? await r.text() : '' };
@@ -268,9 +269,7 @@ export function AboutDialog() {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => void platform().openUrl('https://github.com/andreavolpato/spektrafilm')}>Andrea Volpato · spektrafilm</button>
           <button className="btn" onClick={() => void platform().openUrl('https://github.com/JamesQiu2005/SpektraLab')}>JamesQiu2005 · SpektraLab</button>
-          <button className="btn" onClick={() => void platform().openUrl('https://github.com/YZH2006517/Photo-All')}>YZH2006517 · Photo-All</button>
         </div>
-        <p className="caption">{tz('Lighttable workflow reference: Photo-All (GPL-3.0-or-later). Spektra Studio uses its own viewer integration and native render engine.', '观片台流程参考：Photo-All（GPL-3.0-or-later）。Spektra Studio 独立实现界面集成，使用自身原生渲染引擎。')}</p>
         <p className="caption">
           {tz(
             'Spektra Studio is free software under the GNU GPL, version 3 or later. Based on SpektraLab; original authors and profile attribution follow.',

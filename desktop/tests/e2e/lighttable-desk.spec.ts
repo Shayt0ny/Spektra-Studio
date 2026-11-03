@@ -9,6 +9,9 @@ async function open(page: Page) {
   await page.goto('/?open='); await expect(page.getByTestId('tier-badge')).toHaveText('full', { timeout: 25000 });
   await page.getByTestId('lighttable-button').click(); await expect(page.getByTestId('lt-desk')).toBeVisible();
   await expect(page.getByTestId('lt-film').first().locator('canvas')).toBeVisible();
+  await page.getByTestId('lt-desk-tools-toggle').click();
+  await expect(page.getByTestId('lt-film').locator('canvas')).toHaveCount(8);
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
 }
 test('physical desk moves, resizes and rotates film, preserves placement, and leaves editor pixels and edits alone', async ({ page }) => {
   await open(page); const before = await editor(page), path = await page.getByTestId('lt-film').first().getAttribute('data-path');
@@ -41,7 +44,7 @@ test('loupe follows the photo after rotation and Escape closes it before leaving
   await page.keyboard.press('Escape'); await expect(page.getByTestId('lt-desk-loupe-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByTestId('lighttable')).toBeVisible();
   await page.getByTestId('lt-desk-source').selectOption('developed');
-  await expect(current).toContainText('DEVELOPED'); await expect(current).toHaveAttribute('data-preview-kind', 'developed');
+  await expect(current).toHaveAttribute('data-preview-kind', 'developed'); await expect(current.locator('.lt-film-source')).toHaveCount(0);
   expect(await editor(page)).toBe(before);
   await page.keyboard.press('Escape'); await expect(page.getByTestId('lighttable')).not.toBeVisible(); expect(await editor(page)).toBe(before);
 });
@@ -85,7 +88,7 @@ test('five thousand RAWs stay in trays of twelve and camera review opens no rend
   await page.getByTestId('lighttable-button').click(); await expect(page.getByTestId('lt-desk-page')).toHaveText('1 / 417 · 12 films');
   await expect(page.getByTestId('lt-film').first().locator('canvas')).toBeVisible(); expect(await page.getByTestId('lt-film').count()).toBeLessThanOrEqual(12);
   await page.getByRole('button', { name: 'Next tray →', exact: true }).click(); await expect(page.getByTestId('lt-desk-page')).toHaveText('2 / 417 · 12 films');
-  await expect(page.getByTestId('lt-film').first()).toHaveAttribute('data-path', '/mock/review/13.NEF');
+  await expect(page.locator('[data-testid="lt-film"][data-path="/mock/review/12.NEF"]')).toBeVisible();
   expect(await page.getByTestId('lt-film').count()).toBeLessThanOrEqual(12);
   const calls = await page.evaluate(() => (window as unknown as { reviewCalls: string[] }).reviewCalls);
   expect(calls.filter((method) => ['open', 'open_pair', 'render_view', 'render_proof', 'export_frame', 'solve'].includes(method))).toEqual([]);

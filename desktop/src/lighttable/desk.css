@@ -14,7 +14,7 @@
 .lt-desk-surface:active { cursor: grabbing; }
 /* Optional static lighting/hardware, below photographs. No new render target. */
 .lt-desk-surface:not(.is-realistic) { border: 6px solid #494947; border-radius: 5px; box-shadow: 0 2px 5px #0004; }
-.lt-desk-surface:not(.is-realistic).lamp-on { background: rgb(calc(238 * var(--desk-light)) calc(239 * var(--desk-light)) calc(237 * var(--desk-light))); }
+.lt-desk-surface:not(.is-realistic).lamp-on { background: rgb(calc(245 * var(--desk-light)) calc(245 * var(--desk-light)) calc(245 * var(--desk-light))); }
 .lt-desk-surface:not(.is-realistic) .lt-desk-rim { display: none; }
 .lt-desk-surface.is-realistic { border-color: #424240; border-top-color: #5d5c58; border-bottom-color: #323230; box-shadow: 0 10px 24px #0007, 0 1px 0 1px #72716b, inset 0 0 0 1px #aaa89c, inset 0 0 38px #3c3a3040; }
 .lt-desk-surface.is-realistic.lamp-on { background-image: radial-gradient(ellipse at 48% 43%, #ffffff8a 0%,#fffefa40 45%,#7c75651f 100%),repeating-linear-gradient(90deg,#fffffb10 0 1px,transparent 1px 68px),linear-gradient(90deg,#59544324,transparent 9% 91%,#59544324); }
@@ -51,3 +51,23 @@
 @media (max-width: 1250px) { .lt-desk-controls { padding: 6px 12px; gap: 6px 10px; justify-content: flex-start; }.lt-desk-surface { margin: 12px 16px 10px; border-width: 12px; }.lt-desk-bottom { padding: 0 12px 8px; }.lt-desk-rim { display: none; } }
 @media (max-height: 740px) { .lt-desk-controls .lt-button { padding: 3px 7px; min-height: 28px; }.lt-desk-help { display: none; }.lt-desk-bottom > span { display: none; }.lt-desk-bottom { padding-bottom: 6px; }.lt-desk-surface { margin-top: 10px; margin-bottom: 8px; } }
 .lt-workspace.is-immersive .lt-desk-controls, .lt-workspace.is-immersive .lt-desk-bottom { display: none; }
+
+.lt-desk-bar { display:flex;align-items:center;gap:10px;padding:7px 18px;background:var(--card);border-bottom:1px solid var(--rule);flex:none; }
+.lt-desk-bar > .caption { flex:1; }
+.lt-desk-controls[hidden] { display:none; }
+.lt-desk-controls { flex:none;max-height:min(220px,22vh);overflow:auto;align-content:flex-start;justify-content:flex-start; }
+.lt-desk-layout-tools { width:100%;padding-bottom:6px;border-bottom:1px solid var(--rule); }
+.lt-desk-world { z-index:1; }
+.lt-film-strip-shadow { position:absolute;left:0;top:0;background:#1c1a16;border-radius:2px;box-shadow:0 2px 2px #0008,3px 8px 12px #30291f5c;pointer-events:none;transform-origin:center; }
+.lt-film.in-strip, .lt-desk-surface.is-realistic .lt-film.in-strip { box-shadow:none; }
+.lt-desk-surface.is-realistic { border-width:17px;border-top-color:#686b6d;border-right-color:#44494d;border-left-color:#555a5d;border-bottom-color:#2d3032;box-shadow:0 12px 28px #0008,0 1px 0 1px #858278,inset 0 0 0 2px #afb4b6,inset 0 0 32px #555d6230; }
+.lt-desk-surface.is-realistic.lamp-on { background-color:rgb(calc(240 * var(--desk-light)) calc(240 * var(--desk-light)) calc(240 * var(--desk-light)));background-image:radial-gradient(ellipse at 49% 44%,#ffffffdc 0%,#ffffff70 42%,#f0f2f212 72%,#565b631f 100%),linear-gradient(0deg,#555d6421,transparent 8% 92%,#68717826),linear-gradient(90deg,#6a73791c,transparent 7% 93%,#535c621f),repeating-linear-gradient(0deg,#ffffff08 0 1px,transparent 1px 4px); }
+.lt-desk-surface.is-realistic::before { content:'';position:absolute;inset:0;pointer-events:none;border-radius:2px;box-shadow:inset 0 1px 3px #fff9,inset 1px 0 3px #fff8,inset 0 -2px 8px #525a6045,inset -2px 0 6px #606b7135; }
+.lt-desk-surface.is-realistic .lt-film:not(.in-strip) { box-shadow:0 1px 1px #000b,1px 3px 4px #20262b66,5px 8px 13px #252c3229; }
+.lt-desk-surface.is-realistic .lt-film-strip-shadow { box-shadow:0 1px 2px #000a,2px 5px 7px #242a305e,7px 11px 17px #30394226; }
+.lt-film-perfs { background-image:repeating-linear-gradient(90deg,rgb(calc(226 * var(--desk-light)) calc(226 * var(--desk-light)) calc(226 * var(--desk-light))) 0 9px,transparent 9px 21px); }
+.lt-film-mark { top:auto;bottom:7px;right:33px;width:15px;height:15px;font-size:10px; }
+.lt-desk-loupe { z-index:4; }
+.lt-workspace.is-immersive .lt-desk-bar, .lt-workspace.is-immersive .lt-desk-help { display:none; }
+.lt-workspace.is-immersive .lt-film.is-current { outline:none; }
+.lt-workspace.is-immersive .lt-film-mark { display:none; }

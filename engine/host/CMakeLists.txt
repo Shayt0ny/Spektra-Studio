@@ -22,24 +22,16 @@ target_include_directories(spektralab-host PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/stb")
-target_link_libraries(spektralab-host PRIVATE spk_image_io spk_libraw spektralab_engine spektralab_core spk_codec_jpeg spk_codec_png spk_codec_webp spk_input_codecs spk_lens)
+target_link_libraries(spektralab-host PRIVATE spk_image_io spk_libraw spektralab_engine spektralab_core spk_codec_jpeg spk_codec_png spk_input_codecs spk_lens)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/RawCandidate.cmake")
 if(DEFINED SPEKTRALAB_HOST_VERSION)
     target_compile_definitions(spektralab-host PRIVATE SPEKTRALAB_HOST_VERSION="${SPEKTRALAB_HOST_VERSION}")
 endif()
 
 if(BUILD_TESTING)
-    add_executable(spk_host_raw_tone ../tests/host_raw_tone.cpp)
-    target_include_directories(spk_host_raw_tone PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../src")
-    target_compile_features(spk_host_raw_tone PRIVATE cxx_std_20)
-    target_link_libraries(spk_host_raw_tone PRIVATE spektralab_core spk_libraw)
-    if(MINGW AND SPEKTRALAB_STATIC_RUNTIME)
-        target_link_options(spk_host_raw_tone PRIVATE -static)
-    endif()
-    add_test(NAME spk_host_raw_tone COMMAND spk_host_raw_tone)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
-        foreach(workflow source proof cineon film_edge pair no_film no_film_upstream local_masks)
+        foreach(workflow source proof cineon film_edge pair no_film no_film_upstream)
             add_test(NAME spk_host_${workflow}_workflow COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/host_${workflow}.py"
                 --host "$<TARGET_FILE:spektralab-host>" --resources "${CMAKE_CURRENT_BINARY_DIR}/../resources")
@@ -110,7 +102,7 @@ if(BUILD_TESTING)
     target_compile_features(spk_host_codecs PRIVATE cxx_std_20)
     target_include_directories(spk_host_codecs PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/stb")
-    target_link_libraries(spk_host_codecs PRIVATE spk_image_io spk_libraw spektralab_engine spektralab_core spk_codec_jpeg spk_codec_png spk_codec_webp spk_input_codecs spk_lens)
+    target_link_libraries(spk_host_codecs PRIVATE spk_image_io spk_libraw spektralab_engine spektralab_core spk_codec_jpeg spk_codec_png spk_input_codecs spk_lens)
     if(WIN32)
         target_link_libraries(spk_host_codecs PRIVATE shell32)
     endif()

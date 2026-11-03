@@ -2,12 +2,12 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), cache: vi.fn(), clear: vi.fn(), configure: vi.fn(), report: vi.fn(),relocate:vi.fn(),folder:vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), cache: vi.fn(), clear: vi.fn(), configure: vi.fn(), report: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../host/transport', () => ({ inTauri: () => true }));
 vi.mock('../host/client', () => ({ host: () => ({ memoryReport: mocks.report }) }));
-vi.mock('../state/displayCache', () => ({ displayCacheStatus: mocks.cache, clearDisplayCache: mocks.clear, configureDisplayCache: mocks.configure,relocateDisplayCache:mocks.relocate }));
-vi.mock('../platform', () => ({ platform: () => ({ reveal: vi.fn(), openUrl: vi.fn(),pickFolder:mocks.folder }) }));
+vi.mock('../state/displayCache', () => ({ displayCacheStatus: mocks.cache, clearDisplayCache: mocks.clear, configureDisplayCache: mocks.configure }));
+vi.mock('../platform', () => ({ platform: () => ({ reveal: vi.fn(), openUrl: vi.fn() }) }));
 vi.mock('../i18n', () => ({ tz: (s: string) => s }));
 vi.mock('../controls/controls', () => ({ ToggleRow: (p: { label: string; disabled: boolean; on: boolean; onChange: (v: boolean) => void }) =>
   <button disabled={p.disabled} aria-pressed={p.on} onClick={() => p.onChange(!p.on)}>{p.label}</button> }));
@@ -68,10 +68,4 @@ it('keeps agent access off until the user toggles it and displays missing packag
   await act(async () => button('Allow local command line and agent access').click());
   expect(mocks.invoke).toHaveBeenCalledWith('agent_access_set', { enabled: true });
   expect(button('Allow local command line and agent access').getAttribute('aria-pressed')).toBe('true');
-});
-it('chooses a dedicated preview location and can restore default even when a drive is unavailable',async()=>{
-  mocks.report.mockResolvedValue({});mocks.cache.mockResolvedValue(null);mocks.folder.mockResolvedValue('D:/Pictures');
-  await act(async()=>root.render(<MemorySettings/>));
-  await act(async()=>button('Choose cache folder…').click());expect(mocks.relocate).toHaveBeenCalledWith('D:/Pictures');
-  await act(async()=>button('Use default location').click());expect(mocks.relocate).toHaveBeenCalledWith(null);
 });
